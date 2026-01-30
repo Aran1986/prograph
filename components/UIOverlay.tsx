@@ -4,7 +4,7 @@ import {
   Trash2, Save, MapPin, ChevronUp, ChevronDown, 
   Settings, Camera, FileJson, MousePointer2,
   Menu, HelpCircle, Eye, Check, X, Layers, FileText, Image as ImageIcon,
-  Loader2, Globe, RefreshCw, Cake, Lightbulb, MessageSquare, Send, ArrowRightLeft, ArrowRight, ArrowLeft
+  Loader2, Globe, RefreshCw, Cake, Lightbulb, MessageSquare, Send, ArrowRightLeft
 } from 'lucide-react';
 import { AppState, GraphNodeData, GraphEdgeData, UIPanelsState, AttachedFile, Language, ChatMessage } from '../types';
 import { translations, getDir } from '../utils/translations';
@@ -45,13 +45,13 @@ interface UIOverlayProps {
   onRemoveFile: (fileId: string, itemId: string) => void;
 }
 
-// Reduced width from w-64 to w-48 (approx 30% smaller)
+// Compact Panel (w-48)
 const Panel: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }> = ({ 
   title, icon, children, defaultOpen = true 
 }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   return (
-    <div className="bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-lg overflow-hidden w-48 transition-all duration-200 pointer-events-auto">
+    <div className="bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-lg overflow-hidden w-48 transition-all duration-200 pointer-events-auto shrink-0">
       <div 
         className="bg-gray-100 p-2 flex items-center justify-between cursor-pointer hover:bg-gray-200 select-none"
         onClick={() => setIsOpen(!isOpen)}
@@ -195,27 +195,30 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         onRemoveFile={onRemoveFile}
       />
 
-      {/* --- AI Actions Bar (Bottom Right) --- */}
+      {/* --- AI Actions Bar (Bottom Corner - Aligned) --- */}
       {(activeNode || activeEdge) && !presentationMode.isOpen && (
-        <div className="fixed bottom-4 right-4 z-30 bg-white/95 backdrop-blur rounded-lg shadow-xl border border-blue-200 p-2 flex flex-col gap-2 animate-in slide-in-from-bottom-5 w-48">
+        <div 
+          className="fixed z-30 flex flex-col gap-2 animate-in slide-in-from-bottom-5 pointer-events-auto"
+          style={{ bottom: '4rem', [lang === 'fa' ? 'right' : 'left']: '1rem' }}
+        >
            <button 
               onClick={onCakePresentation}
-              className="flex items-center gap-2 bg-pink-500 hover:bg-pink-600 text-white px-3 py-2 rounded text-xs font-bold transition-transform hover:scale-105 shadow-sm justify-center"
+              className="flex items-center gap-2 bg-pink-500 hover:bg-pink-600 text-white px-3 py-2 rounded-lg text-xs font-bold transition-transform hover:scale-105 shadow-md justify-start w-40"
               title="Strict format presentation"
             >
-              <Cake size={14} /> <span>{t.cakePres}</span>
+              <Cake size={16} /> <span>{t.cakePres}</span>
             </button>
             <button 
               onClick={onSmartGuide}
-              className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded text-xs font-bold transition-transform hover:scale-105 shadow-sm justify-center"
+              className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-xs font-bold transition-transform hover:scale-105 shadow-md justify-start w-40"
               title="Analyze connections and topology"
             >
-              <Lightbulb size={14} /> <span>{t.smartGuide}</span>
+              <Lightbulb size={16} /> <span>{t.smartGuide}</span>
             </button>
         </div>
       )}
 
-      {/* Sidebar Container: Tools & Camera (Stacked) */}
+      {/* Sidebar Container: Tools & Camera (STACKED to prevent overlap) */}
       <div className={`absolute top-16 ${lang === 'fa' ? 'right-4' : 'left-4'} z-10 flex flex-col gap-4 pointer-events-none`}>
         {uiPanels.tools && (
           <Panel title={t.toolTitle} icon={<Settings size={16} />}>
@@ -231,6 +234,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
           </Panel>
         )}
 
+        {/* Camera Panel is now strictly UNDER the tools panel in the flex container */}
         {uiPanels.camera && (
           <Panel title={t.camTitle} icon={<Camera size={16} />}>
              <div className="flex gap-1 mb-2">
@@ -360,7 +364,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
       {hoverInfo && !presentationMode.isOpen && (
         <div 
           className="fixed z-30 pointer-events-none bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-2xl border border-gray-600 max-w-sm transition-opacity"
-          style={{ bottom: '80px', [lang === 'fa' ? 'right' : 'left']: '20px' }} 
+          style={{ bottom: '2rem', [lang === 'fa' ? 'left' : 'right']: '1rem' }} 
           dir={getDir(lang)}
         >
           <div className="font-bold text-xl mb-2 text-blue-300">{hoverInfo.label}</div>
