@@ -4,11 +4,13 @@ import {
   Trash2, Save, MapPin, ChevronUp, ChevronDown, 
   Settings, Camera, FileJson, MousePointer2,
   Menu, HelpCircle, Eye, Check, X, Layers, FileText, Image as ImageIcon,
-  Loader2, Globe, RefreshCw, Cake, Lightbulb, MessageSquare, Send, ArrowRightLeft
+  Loader2, Globe, RefreshCw, Cake, Lightbulb, MessageSquare, Send, ArrowRightLeft,
+  Undo2, Redo2, BrainCircuit
 } from 'lucide-react';
 import { AppState, GraphNodeData, GraphEdgeData, UIPanelsState, AttachedFile, Language, ChatMessage } from '../types';
 import { translations, getDir } from '../utils/translations';
 import { PresentationModal } from './PresentationModal';
+import { AIArchitectModal } from './AIArchitectModal';
 
 interface UIOverlayProps {
   appState: AppState;
@@ -43,6 +45,14 @@ interface UIOverlayProps {
   onSmartGuide: () => void;
   onAddFile: (file: AttachedFile, itemId: string) => void;
   onRemoveFile: (fileId: string, itemId: string) => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onPushHistory: () => void;
+  // AI Architect Props
+  onApplyGraphFromAI: (nodes: any[], edges: any[]) => void;
+  onApplyChangesFromAI: (changes: any) => void;
 }
 
 // Compact Panel (w-48)
@@ -108,11 +118,13 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
   onExport, onImport, onCameraTeleport, hoverInfo, onSelectSameColor,
   onFileUpload, onDeleteFile, presentationMode, setPresentationMode,
   onRegeneratePresentation, onCakePresentation, onSmartGuide,
-  onAddFile, onRemoveFile
+  onAddFile, onRemoveFile, onUndo, onRedo, canUndo, canRedo, onPushHistory,
+  onApplyGraphFromAI, onApplyChangesFromAI
 }) => {
   const [camInput, setCamInput] = useState({ x: 0, y: 10, z: 20 });
   const [activeMenu, setActiveMenu] = useState<'file' | 'view' | 'lang' | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [showArchitect, setShowArchitect] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
@@ -148,6 +160,26 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
           </div>
 
           <div className="flex items-center h-full gap-1">
+             {/* Undo / Redo */}
+             <div className="flex items-center gap-1 border-r border-slate-600 px-2 mx-2">
+                <button 
+                  onClick={onUndo} 
+                  disabled={!canUndo} 
+                  className="p-1.5 rounded hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                  title={t.undo}
+                >
+                  <Undo2 size={16} />
+                </button>
+                <button 
+                  onClick={onRedo} 
+                  disabled={!canRedo} 
+                  className="p-1.5 rounded hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                  title={t.redo}
+                >
+                  <Redo2 size={16} />
+                </button>
+             </div>
+
              <div className="relative h-full flex items-center">
               <button onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === 'file' ? null : 'file'); }} className="px-3 py-1 rounded hover:bg-slate-700 transition-colors">{t.file}</button>
               {activeMenu === 'file' && <div className={`absolute top-10 ${lang === 'fa' ? 'right-0' : 'left-0'} w-48 bg-white text-slate-800 rounded shadow-xl z-50`}>
@@ -172,6 +204,16 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                    <button className="flex items-center gap-2 px-4 py-2 hover:bg-blue-50 w-full" onClick={() => setAppState(prev => ({ ...prev, appLanguage: 'en' }))}>{t.english}</button>
               </div>}
             </div>
+             
+             {/* AI Architect Button */}
+             <button 
+                onClick={() => setShowArchitect(true)}
+                className="px-3 py-1 rounded bg-purple-600 hover:bg-purple-700 flex items-center gap-2 transition-colors mx-2 shadow-sm font-medium"
+             >
+                <BrainCircuit size={16} /> 
+                <span className="hidden md:inline">{t.aiArchitect}</span>
+             </button>
+
              <button onClick={() => setShowHelp(true)} className="px-3 py-1 rounded hover:bg-slate-700">{t.help}</button>
           </div>
         </div>
@@ -179,6 +221,16 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
 
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} lang={lang} />}
       
+      <AIArchitectModal 
+        isOpen={showArchitect} 
+        onClose={() => setShowArchitect(false)}
+        lang={lang}
+        nodes={nodes}
+        edges={edges}
+        onApplyGraph={onApplyGraphFromAI}
+        onApplyChanges={onApplyChangesFromAI}
+      />
+
       <PresentationModal 
         isOpen={presentationMode.isOpen} 
         isLoading={presentationMode.isLoading}
@@ -195,11 +247,11 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         onRemoveFile={onRemoveFile}
       />
 
-      {/* --- AI Actions Bar (Bottom Corner - Aligned) --- */}
+      {/* --- AI Actions Bar (Bottom Left) --- */}
       {(activeNode || activeEdge) && !presentationMode.isOpen && (
         <div 
           className="fixed z-30 flex flex-col gap-2 animate-in slide-in-from-bottom-5 pointer-events-auto"
-          style={{ bottom: '4rem', [lang === 'fa' ? 'right' : 'left']: '1rem' }}
+          style={{ bottom: '4rem', left: '1rem' }}
         >
            <button 
               onClick={onCakePresentation}
@@ -278,7 +330,13 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
 
                  <div>
                   <label className="text-xs text-gray-500 block mb-1">{t.label}</label>
-                  <input type="text" className="w-full border rounded p-1 text-sm bg-gray-50 focus:bg-white transition-colors" value={activeNode?.label || activeEdge?.label} onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { label: e.target.value })} />
+                  <input 
+                    type="text" 
+                    className="w-full border rounded p-1 text-sm bg-gray-50 focus:bg-white transition-colors" 
+                    value={activeNode?.label || activeEdge?.label} 
+                    onFocus={onPushHistory} // Save history on focus
+                    onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { label: e.target.value })} 
+                  />
                  </div>
                  
                  {/* Edge Direction Selector */}
@@ -288,6 +346,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                       <select 
                         className="w-full text-xs p-1 rounded border border-orange-200 bg-white"
                         value={activeEdge.direction || 'bidirectional'}
+                        onFocus={onPushHistory}
                         onChange={(e) => onUpdateItem(activeEdge.id, 'edge', { direction: e.target.value as any })}
                       >
                          <option value="bidirectional">Bidirectional (Mutual)</option>
@@ -299,13 +358,23 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
 
                  <div>
                   <label className="text-xs text-gray-500 block mb-1">{t.size}</label>
-                  <input type="range" min={activeNode ? "0.5" : "0.05"} max={activeNode ? "3" : "0.5"} step="0.01" className="w-full" value={activeNode?.size || activeEdge?.size || 0.1} onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { size: parseFloat(e.target.value) })} />
+                  <input 
+                    type="range" min={activeNode ? "0.5" : "0.05"} max={activeNode ? "3" : "0.5"} step="0.01" className="w-full" 
+                    value={activeNode?.size || activeEdge?.size || 0.1} 
+                    onPointerDown={onPushHistory} // Save history on drag start
+                    onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { size: parseFloat(e.target.value) })} 
+                  />
                  </div>
                  
                  <div>
                   <label className="text-xs text-gray-500 block mb-1">{t.color}</label>
                   <div className="flex gap-2">
-                    <input type="color" className="w-8 h-8 cursor-pointer rounded border border-gray-300 p-0 overflow-hidden" value={activeNode?.color || activeEdge?.color} onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { color: e.target.value })} />
+                    <input 
+                      type="color" className="w-8 h-8 cursor-pointer rounded border border-gray-300 p-0 overflow-hidden" 
+                      value={activeNode?.color || activeEdge?.color} 
+                      onClick={onPushHistory} // Save history on click/open
+                      onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { color: e.target.value })} 
+                    />
                     <div className="text-xs text-gray-400 flex items-center">{activeNode?.color || activeEdge?.color}</div>
                   </div>
                  </div>
@@ -324,6 +393,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                         <div key={file.id} className="flex justify-between items-center bg-white border p-1 rounded text-xs">
                            <div className="flex items-center gap-1 overflow-hidden">
                              {file.type.startsWith('image') ? <ImageIcon size={10} className="text-blue-500"/> : <FileText size={10} className="text-gray-500"/>}
+                             {file.isAiGenerated && <span className="text-[9px] bg-purple-100 text-purple-700 px-1 rounded">AI</span>}
                              <span className="truncate max-w-[120px]">{file.name}</span>
                            </div>
                            <button onClick={() => onDeleteFile(file.id)} className="text-red-500 hover:bg-red-50 p-0.5 rounded"><X size={12}/></button>
@@ -337,12 +407,22 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
 
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">{t.summary}</label>
-                  <textarea className="w-full border rounded p-1 text-sm h-16 bg-gray-50 focus:bg-white transition-colors" value={activeNode?.summary || activeEdge?.summary || ""} onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { summary: e.target.value })} />
+                  <textarea 
+                    className="w-full border rounded p-1 text-sm h-16 bg-gray-50 focus:bg-white transition-colors" 
+                    value={activeNode?.summary || activeEdge?.summary || ""} 
+                    onFocus={onPushHistory}
+                    onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { summary: e.target.value })} 
+                  />
                 </div>
                 
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">{t.fullContent}</label>
-                  <textarea className="w-full border rounded p-1 text-sm h-24 bg-gray-50 focus:bg-white transition-colors" value={activeNode?.fullContent || activeEdge?.fullContent || ""} onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { fullContent: e.target.value })} />
+                  <textarea 
+                    className="w-full border rounded p-1 text-sm h-24 bg-gray-50 focus:bg-white transition-colors" 
+                    value={activeNode?.fullContent || activeEdge?.fullContent || ""} 
+                    onFocus={onPushHistory}
+                    onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { fullContent: e.target.value })} 
+                  />
                 </div>
 
                 <button onClick={onDeleteItem} className="mt-2 bg-red-100 hover:bg-red-200 text-red-600 p-2 rounded flex items-center justify-center gap-2 text-sm font-medium transition-colors">
@@ -363,8 +443,8 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
       {/* Tooltip & Hints */}
       {hoverInfo && !presentationMode.isOpen && (
         <div 
-          className="fixed z-30 pointer-events-none bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-2xl border border-gray-600 max-w-sm transition-opacity"
-          style={{ bottom: '2rem', [lang === 'fa' ? 'left' : 'right']: '1rem' }} 
+          className="fixed z-30 pointer-events-none bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-2xl border border-gray-600 max-w-sm transition-opacity left-1/2 -translate-x-1/2"
+          style={{ bottom: '2rem' }} 
           dir={getDir(lang)}
         >
           <div className="font-bold text-xl mb-2 text-blue-300">{hoverInfo.label}</div>
@@ -374,7 +454,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
       )}
 
       {uiPanels.hints && (
-        <div className="absolute bottom-4 left-4 text-xs text-gray-500 pointer-events-none bg-white/80 backdrop-blur-sm p-2 rounded border border-gray-200 shadow-sm z-10">
+        <div className="absolute bottom-4 right-4 text-xs text-gray-500 pointer-events-none bg-white/80 backdrop-blur-sm p-2 rounded border border-gray-200 shadow-sm z-10">
           {t.hints}
         </div>
       )}

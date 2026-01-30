@@ -9,10 +9,11 @@ interface GraphNodeProps {
   isSelected: boolean;
   isEdgeStart: boolean;
   onClick: (e: ThreeEvent<MouseEvent>, id: string) => void;
-  onDoubleClick: (e: ThreeEvent<MouseEvent>, id: string) => void; // Added
+  onDoubleClick: (e: ThreeEvent<MouseEvent>, id: string) => void;
   onPointerOver: (e: ThreeEvent<PointerEvent>, data: GraphNodeData) => void;
   onPointerOut: (e: ThreeEvent<PointerEvent>) => void;
   onDrag: (id: string, newPos: [number, number, number]) => void;
+  onDragStart?: () => void; // Added for undo/redo
   isDraggingEnabled: boolean;
 }
 
@@ -25,6 +26,7 @@ export const GraphNode: React.FC<GraphNodeProps> = ({
   onPointerOver,
   onPointerOut,
   onDrag,
+  onDragStart,
   isDraggingEnabled
 }) => {
   const { camera } = useThree();
@@ -40,6 +42,7 @@ export const GraphNode: React.FC<GraphNodeProps> = ({
     
     // Only allow left click drag (button 0)
     if (e.button === 0) {
+      if (onDragStart) onDragStart(); // Trigger history save
       setDragging(true);
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       

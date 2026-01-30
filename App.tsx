@@ -95,6 +95,10 @@ const App: React.FC = () => {
     edgeStartNodeId: null,
     appLanguage: 'fa' 
   });
+
+  // History Stacks for Undo/Redo
+  const [history, setHistory] = useState<{nodes: GraphNodeData[], edges: GraphEdgeData[]}[]>([]);
+  const [future, setFuture] = useState<{nodes: GraphNodeData[], edges: GraphEdgeData[]}[]>([]);
   
   const [cameraPosDisplay, setCameraPosDisplay] = useState({ x: 0, y: 10, z: 20 });
   const [targetCameraPos, setTargetCameraPos] = useState<CameraState | null>(null);
@@ -124,6 +128,55 @@ const App: React.FC = () => {
     activeItemId: null
   });
 
+  // --- History Management ---
+  const saveHistory = useCallback(() => {
+    setHistory(prev => {
+      // Optimization: Optionally check if the new state is identical to the last to avoid dups
+      // But for simplicity and correctness with "pre-action" saving, we just push.
+      return [...prev, { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }];
+    });
+    setFuture([]); // Clear redo stack on new action
+  }, [nodes, edges]);
+
+  const undo = useCallback(() => {
+    if (history.length === 0) return;
+    const previous = history[history.length - 1];
+    const newHistory = history.slice(0, -1);
+
+    setFuture(prev => [...prev, { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }]);
+    setNodes(previous.nodes);
+    setEdges(previous.edges);
+    setHistory(newHistory);
+  }, [history, nodes, edges]);
+
+  const redo = useCallback(() => {
+    if (future.length === 0) return;
+    const next = future[future.length - 1];
+    const newFuture = future.slice(0, -1);
+
+    setHistory(prev => [...prev, { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }]);
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setFuture(newFuture);
+  }, [future, nodes, edges]);
+
+  // Keyboard Shortcuts for Undo/Redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
+
   useEffect(() => {
     const saved = localStorage.getItem('graph_pro_data');
     if (saved) {
@@ -150,6 +203,7 @@ const App: React.FC = () => {
   }, [appState.appLanguage]);
 
   const handleAddNode = useCallback(() => {
+    saveHistory(); // Snapshot
     const newNode: GraphNodeData = {
       id: crypto.randomUUID(),
       label: `Node ${nodes.length + 1}`,
@@ -162,7 +216,7 @@ const App: React.FC = () => {
     };
     setNodes(prev => [...prev, newNode]);
     setAppState(prev => ({ ...prev, selectedIds: [newNode.id], activeType: 'node', mode: 'select' }));
-  }, [nodes]);
+  }, [nodes, saveHistory]);
 
   const handleNodeClick = useCallback((e: any, id: string) => {
     e.stopPropagation();
@@ -175,6 +229,7 @@ const App: React.FC = () => {
       } 
       else if (prev.mode === 'edge-finish') {
         if (prev.edgeStartNodeId && prev.edgeStartNodeId !== id) {
+           saveHistory(); // Snapshot before creating edge
            const newEdge: GraphEdgeData = {
              id: crypto.randomUUID(),
              fromId: prev.edgeStartNodeId,
@@ -194,7 +249,7 @@ const App: React.FC = () => {
       }
       return prev;
     });
-  }, []);
+  }, [saveHistory]);
 
   const handleEdgeClick = useCallback((e: any, id: string) => {
     e.stopPropagation();
@@ -211,6 +266,7 @@ const App: React.FC = () => {
 
   // --- Image Save Handler (for Generated Images) ---
   const handleAddFile = useCallback((file: AttachedFile, itemId: string) => {
+    saveHistory();
     // Save generated image to node/edge state
     const targetNode = nodes.find(n => n.id === itemId);
     if (targetNode) {
@@ -221,9 +277,10 @@ const App: React.FC = () => {
     if (targetEdge) {
         setEdges(prev => prev.map(e => e.id === itemId ? { ...e, files: [...e.files, file] } : e));
     }
-  }, [nodes, edges]);
+  }, [nodes, edges, saveHistory]);
 
   const handleRemoveFile = useCallback((fileId: string, itemId: string) => {
+    saveHistory();
     const targetNode = nodes.find(n => n.id === itemId);
     if (targetNode) {
         setNodes(prev => prev.map(n => n.id === itemId ? { ...n, files: n.files.filter(f => f.id !== fileId) } : n));
@@ -233,7 +290,7 @@ const App: React.FC = () => {
     if (targetEdge) {
         setEdges(prev => prev.map(e => e.id === itemId ? { ...e, files: e.files.filter(f => f.id !== fileId) } : e));
     }
-  }, [nodes, edges]);
+  }, [nodes, edges, saveHistory]);
 
   // --- AI Presentation Handlers ---
   const openPresentation = (content: string, item: GraphNodeData | GraphEdgeData, isLoading = false) => {
@@ -289,6 +346,7 @@ const App: React.FC = () => {
   };
 
   const handleDragNode = useCallback((id: string, newPos: [number, number, number]) => {
+    // Note: saveHistory is triggered by onDragStart in GraphNode component
     setNodes(prev => {
       const draggedNode = prev.find(n => n.id === id);
       if (!draggedNode) return prev;
@@ -309,6 +367,7 @@ const App: React.FC = () => {
   }, [appState.selectedIds]);
 
   const handleUpdateItem = useCallback((id: string, type: 'node' | 'edge', data: any) => {
+    // Note: saveHistory is triggered by onPushHistory (onFocus/onClick) in UIOverlay
     const targetIds = appState.selectedIds.includes(id) ? appState.selectedIds : [id];
     if (type === 'node') {
       setNodes(prev => prev.map(n => targetIds.includes(n.id) ? { ...n, ...data } : n));
@@ -320,6 +379,7 @@ const App: React.FC = () => {
   const handleFileUpload = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
+      saveHistory();
       const result = e.target?.result as string; 
       const newFile: AttachedFile = {
         id: crypto.randomUUID(),
@@ -335,18 +395,20 @@ const App: React.FC = () => {
       }
     };
     reader.readAsDataURL(file);
-  }, [appState]);
+  }, [appState, saveHistory]);
 
   const handleDeleteFile = useCallback((fileId: string) => {
+    saveHistory();
     const { selectedIds, activeType } = appState;
     if (activeType === 'node') {
       setNodes(prev => prev.map(n => selectedIds.includes(n.id) ? { ...n, files: n.files?.filter(f => f.id !== fileId) || [] } : n));
     } else if (activeType === 'edge') {
       setEdges(prev => prev.map(e => selectedIds.includes(e.id) ? { ...e, files: e.files?.filter(f => f.id !== fileId) || [] } : e));
     }
-  }, [appState]);
+  }, [appState, saveHistory]);
 
   const handleDeleteItem = useCallback(() => {
+    saveHistory();
     const { selectedIds, activeType } = appState;
     if (selectedIds.length === 0) return;
     if (activeType === 'node') {
@@ -356,7 +418,7 @@ const App: React.FC = () => {
       setEdges(prev => prev.filter(e => !selectedIds.includes(e.id)));
     }
     setAppState(prev => ({ ...prev, selectedIds: [], activeType: null }));
-  }, [appState]);
+  }, [appState, saveHistory]);
 
   const handleSelectSameColor = useCallback(() => {
     const { selectedIds, activeType } = appState;
@@ -379,6 +441,7 @@ const App: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
+        saveHistory();
         const result = JSON.parse(e.target?.result as string);
         if (result.nodes) setNodes(result.nodes);
         if (result.edges) setEdges(result.edges);
@@ -386,6 +449,90 @@ const App: React.FC = () => {
     };
     reader.readAsText(file);
   };
+
+  // AI Architect: Apply Graph Structure from Files
+  const handleApplyGraphFromAI = useCallback((newNodesRaw: any[], newEdgesRaw: any[]) => {
+    saveHistory();
+    
+    // Map raw AI JSON to GraphNodeData
+    const mappedNodes: GraphNodeData[] = newNodesRaw.map((n, idx) => ({
+       id: crypto.randomUUID(),
+       label: n.label,
+       summary: n.summary || "",
+       fullContent: n.fullContent || "",
+       color: n.color || `hsl(${Math.random() * 360}, 70%, 50%)`,
+       size: n.size || 1,
+       position: [(Math.random() * 20) - 10, (Math.random() * 10) - 5, (Math.random() * 20) - 10], // Random pos for now
+       files: []
+    }));
+
+    // Map raw AI JSON to GraphEdgeData
+    const mappedEdges: GraphEdgeData[] = newEdgesRaw.map(e => {
+       const fromNode = mappedNodes.find(n => n.label === e.fromLabel);
+       const toNode = mappedNodes.find(n => n.label === e.toLabel);
+       if (fromNode && toNode) {
+         return {
+           id: crypto.randomUUID(),
+           fromId: fromNode.id,
+           toId: toNode.id,
+           label: e.label,
+           color: '#888',
+           size: 0.2,
+           summary: e.summary || "",
+           fullContent: "",
+           files: [],
+           direction: 'bidirectional'
+         };
+       }
+       return null;
+    }).filter(e => e !== null) as GraphEdgeData[];
+
+    setNodes(mappedNodes);
+    setEdges(mappedEdges);
+  }, [saveHistory]);
+
+  // AI Architect: Apply Changes (Shadow Copy logic)
+  const handleApplyChangesFromAI = useCallback((changes: { modifiedNodes: {id: string, content: string}[], newNodes: any[], newEdges: any[] }) => {
+     saveHistory();
+     
+     // 1. Handle Content Updates as Shadow Files
+     if (changes.modifiedNodes && changes.modifiedNodes.length > 0) {
+        setNodes(prev => prev.map(node => {
+           const mod = changes.modifiedNodes.find(m => m.id === node.id);
+           if (mod) {
+             // Create a Shadow File instead of overwriting content directly
+             const shadowFile: AttachedFile = {
+               id: crypto.randomUUID(),
+               name: `AI_Generated_Content_${Date.now()}.txt`,
+               type: 'text/plain',
+               content: `data:text/plain;base64,${btoa(unescape(encodeURIComponent(mod.content)))}`,
+               isAiGenerated: true
+             };
+             return { ...node, files: [...node.files, shadowFile] };
+           }
+           return node;
+        }));
+     }
+
+     // 2. Handle New Nodes
+     if (changes.newNodes && changes.newNodes.length > 0) {
+        const addedNodes: GraphNodeData[] = changes.newNodes.map(n => ({
+          id: crypto.randomUUID(),
+          label: n.label,
+          summary: n.summary || "AI Generated",
+          fullContent: n.fullContent || "",
+          color: '#A020F0', // Purple for AI nodes
+          size: 1,
+          position: [(Math.random() * 20) - 10, 0, (Math.random() * 20) - 10],
+          files: []
+        }));
+        setNodes(prev => [...prev, ...addedNodes]);
+     }
+
+     // 3. Handle New Edges (Note: this is complex as it needs to link to potentially new nodes)
+     // For this prototype, we'll skip complex edge linking for auto-pilot to avoid ID mismatch errors,
+     // or only link if nodes exist.
+  }, [saveHistory]);
 
   const handlePointerOver = useCallback((e: any, data: GraphNodeData | GraphEdgeData) => {
     e.stopPropagation();
@@ -422,8 +569,15 @@ const App: React.FC = () => {
         onRegeneratePresentation={regeneratePresentation}
         onCakePresentation={handleCakePresentation}
         onSmartGuide={handleSmartGuide}
-        onAddFile={handleAddFile} // Pass handler
-        onRemoveFile={handleRemoveFile} // Pass handler
+        onAddFile={handleAddFile} 
+        onRemoveFile={handleRemoveFile}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={history.length > 0}
+        canRedo={future.length > 0}
+        onPushHistory={saveHistory}
+        onApplyGraphFromAI={handleApplyGraphFromAI}
+        onApplyChangesFromAI={handleApplyChangesFromAI}
       />
       
       <div className="flex-1 relative mt-12"> 
@@ -448,6 +602,7 @@ const App: React.FC = () => {
                 onPointerOver={handlePointerOver}
                 onPointerOut={handlePointerOut}
                 onDrag={handleDragNode}
+                onDragStart={saveHistory} // Trigger save on drag start
                 isDraggingEnabled={appState.mode === 'select'}
               />
             ))}

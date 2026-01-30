@@ -7,6 +7,8 @@ export interface AttachedFile {
   name: string;
   type: string; // MIME type (image/png, text/plain, etc.)
   content: string; // Base64 string
+  isAiGenerated?: boolean; // Flag for shadow copies
+  originalFileId?: string; // Reference to original if this is a shadow copy
 }
 
 export interface GraphNodeData {
@@ -66,4 +68,19 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   timestamp: number;
+}
+
+export interface AIArchitectDefinitions {
+  nodeDefinition: string; // e.g. "Characters in the novel"
+  edgeDefinition: string; // e.g. "Conflicts between characters"
+  projectGoals: string;   // e.g. "Make the butler the killer"
+}
+
+export interface AISuggestion {
+  id: string;
+  title: string;
+  description: string;
+  type: 'add_node' | 'add_edge' | 'modify_content' | 'delete_item';
+  data: any; // The payload to apply
+  status: 'pending' | 'accepted' | 'rejected';
 }
