@@ -1,5 +1,14 @@
 import * as THREE from 'three';
 
+export type Language = 'fa' | 'en';
+
+export interface AttachedFile {
+  id: string;
+  name: string;
+  type: string; // MIME type (image/png, text/plain, etc.)
+  content: string; // Base64 string
+}
+
 export interface GraphNodeData {
   id: string;
   label: string;
@@ -8,6 +17,7 @@ export interface GraphNodeData {
   color: string;
   size: number;
   position: [number, number, number];
+  files: AttachedFile[];
 }
 
 export interface GraphEdgeData {
@@ -16,6 +26,10 @@ export interface GraphEdgeData {
   toId: string;
   label: string;
   color: string;
+  size: number;
+  summary: string;
+  fullContent: string;
+  files: AttachedFile[];
 }
 
 export interface CameraState {
@@ -29,10 +43,11 @@ export type InteractionMode = 'select' | 'edge-start' | 'edge-finish';
 export interface AppState {
   nodes: GraphNodeData[];
   edges: GraphEdgeData[];
-  activeId: string | null; // ID of selected node or edge
+  selectedIds: string[];
   activeType: 'node' | 'edge' | null;
   mode: InteractionMode;
   edgeStartNodeId: string | null;
+  appLanguage: Language; // Added global app language
 }
 
 export interface UIPanelsState {
@@ -40,5 +55,5 @@ export interface UIPanelsState {
   properties: boolean;
   camera: boolean;
   hints: boolean;
-  filePanel: boolean; // Legacy panel, kept for compatibility if needed or merged into TopBar
+  filePanel: boolean; 
 }
