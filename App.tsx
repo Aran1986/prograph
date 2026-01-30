@@ -6,7 +6,7 @@ import { GraphNode } from './components/GraphNode';
 import { GraphEdge } from './components/GraphEdge';
 import { UIOverlay } from './components/UIOverlay';
 import { GraphNodeData, GraphEdgeData, AppState, CameraState, UIPanelsState, AttachedFile, Language } from './types';
-import { generatePresentation } from './services/ai';
+import { generatePresentation, generateCakePresentation, generateSmartGuide } from './services/ai';
 import { getDir } from './utils/translations';
 
 // Keyboard Control Component for WASD/Arrow navigation
@@ -114,14 +114,16 @@ const App: React.FC = () => {
     isOpen: boolean; 
     content: string; 
     isLoading: boolean;
-    activeFiles: AttachedFile[]; // Passed to modal for replacement
+    activeFiles: AttachedFile[]; 
     targetLanguage: Language;
+    activeItemId: string | null;
   }>({
     isOpen: false,
     content: '',
     isLoading: false,
     activeFiles: [],
-    targetLanguage: 'fa'
+    targetLanguage: 'fa',
+    activeItemId: null
   });
 
   // --- Persistence ---
@@ -170,7 +172,6 @@ const App: React.FC = () => {
 
   const handleNodeClick = useCallback((e: any, id: string) => {
     e.stopPropagation();
-    
     setAppState(prev => {
       if (prev.mode === 'select') {
         return { ...prev, selectedIds: [id], activeType: 'node' };
@@ -213,42 +214,59 @@ const App: React.FC = () => {
     }
   }, [appState.mode]);
 
-  // AI Presentation Logic
+  // --- AI Presentation Handlers ---
+
+  const openPresentation = (content: string, item: GraphNodeData | GraphEdgeData, isLoading = false) => {
+     setPresentationMode({
+        isOpen: true,
+        content: content,
+        isLoading: isLoading,
+        activeFiles: item.files || [],
+        targetLanguage: appState.appLanguage,
+        activeItemId: item.id
+      });
+  };
+
   const handleDoubleClick = useCallback(async (e: any, id: string) => {
     e.stopPropagation();
-    
-    const targetNode = nodes.find(n => n.id === id);
-    const targetEdge = edges.find(e => e.id === id);
-    const target = targetNode || targetEdge;
-
+    const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
     if (target) {
-      // Open modal immediately with loading state
-      setPresentationMode({ 
-        isOpen: true, 
-        content: '', 
-        isLoading: true, 
-        activeFiles: target.files || [],
-        targetLanguage: appState.appLanguage // Default to app language
-      });
-      
+      openPresentation('', target, true); // Open loading state
       const htmlContent = await generatePresentation(target, appState.appLanguage);
-      
-      setPresentationMode(prev => ({ 
-        ...prev, 
-        content: htmlContent, 
-        isLoading: false 
-      }));
+      setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
   }, [nodes, edges, appState.appLanguage]);
 
-  // Handle language change within presentation mode to regenerate
-  const regeneratePresentation = async (lang: Language) => {
-    // Find active item from appState
+  const handleCakePresentation = useCallback(async () => {
     const id = appState.selectedIds[0];
+    const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
+    if (target) {
+      openPresentation('', target, true);
+      const htmlContent = await generateCakePresentation(target, appState.appLanguage);
+      setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
+    }
+  }, [nodes, edges, appState.selectedIds, appState.appLanguage]);
+
+  const handleSmartGuide = useCallback(async () => {
+    const id = appState.selectedIds[0];
+    const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
+    if (target) {
+      openPresentation('', target, true);
+      // Pass full context (all nodes/edges) for topology analysis
+      const htmlContent = await generateSmartGuide(target, nodes, edges, appState.appLanguage);
+      setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
+    }
+  }, [nodes, edges, appState.selectedIds, appState.appLanguage]);
+
+  const regeneratePresentation = async (lang: Language) => {
+    const id = presentationMode.activeItemId;
+    if (!id) return;
     const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
     
     if (target) {
       setPresentationMode(prev => ({ ...prev, isLoading: true, targetLanguage: lang }));
+      // We default to standard presentation on language switch for simplicity, 
+      // or we could track which "mode" was active (Cake vs Smart) in a real app.
       const htmlContent = await generatePresentation(target, lang);
       setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
@@ -266,10 +284,7 @@ const App: React.FC = () => {
       if (appState.selectedIds.includes(id)) {
         return prev.map(n => {
           if (appState.selectedIds.includes(n.id)) {
-             return {
-               ...n,
-               position: [n.position[0] + dx, n.position[1] + dy, n.position[2] + dz]
-             };
+             return { ...n, position: [n.position[0] + dx, n.position[1] + dy, n.position[2] + dz] };
           }
           return n;
         });
@@ -287,28 +302,21 @@ const App: React.FC = () => {
     }
   }, [appState.selectedIds]);
 
-  // File Upload Logic
   const handleFileUpload = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
-      const result = e.target?.result as string; // This is the Base64 string
+      const result = e.target?.result as string; 
       const newFile: AttachedFile = {
         id: crypto.randomUUID(),
         name: file.name,
         type: file.type,
         content: result
       };
-
-      // Add to all selected items
       const { selectedIds, activeType } = appState;
       if (activeType === 'node') {
-        setNodes(prev => prev.map(n => 
-          selectedIds.includes(n.id) ? { ...n, files: [...(n.files || []), newFile] } : n
-        ));
+        setNodes(prev => prev.map(n => selectedIds.includes(n.id) ? { ...n, files: [...(n.files || []), newFile] } : n));
       } else if (activeType === 'edge') {
-        setEdges(prev => prev.map(e => 
-          selectedIds.includes(e.id) ? { ...e, files: [...(e.files || []), newFile] } : e
-        ));
+        setEdges(prev => prev.map(e => selectedIds.includes(e.id) ? { ...e, files: [...(e.files || []), newFile] } : e));
       }
     };
     reader.readAsDataURL(file);
@@ -317,20 +325,15 @@ const App: React.FC = () => {
   const handleDeleteFile = useCallback((fileId: string) => {
     const { selectedIds, activeType } = appState;
     if (activeType === 'node') {
-      setNodes(prev => prev.map(n => 
-        selectedIds.includes(n.id) ? { ...n, files: n.files?.filter(f => f.id !== fileId) || [] } : n
-      ));
+      setNodes(prev => prev.map(n => selectedIds.includes(n.id) ? { ...n, files: n.files?.filter(f => f.id !== fileId) || [] } : n));
     } else if (activeType === 'edge') {
-      setEdges(prev => prev.map(e => 
-        selectedIds.includes(e.id) ? { ...e, files: e.files?.filter(f => f.id !== fileId) || [] } : e
-      ));
+      setEdges(prev => prev.map(e => selectedIds.includes(e.id) ? { ...e, files: e.files?.filter(f => f.id !== fileId) || [] } : e));
     }
   }, [appState]);
 
   const handleDeleteItem = useCallback(() => {
     const { selectedIds, activeType } = appState;
     if (selectedIds.length === 0) return;
-
     if (activeType === 'node') {
       setNodes(prev => prev.filter(n => !selectedIds.includes(n.id)));
       setEdges(prev => prev.filter(e => !selectedIds.includes(e.fromId) && !selectedIds.includes(e.toId)));
@@ -343,34 +346,16 @@ const App: React.FC = () => {
   const handleSelectSameColor = useCallback(() => {
     const { selectedIds, activeType } = appState;
     if (selectedIds.length === 0 || !activeType) return;
-
-    let refColor = '';
-    if (activeType === 'node') {
-      const node = nodes.find(n => n.id === selectedIds[0]);
-      if (node) refColor = node.color;
-    } else {
-      const edge = edges.find(e => e.id === selectedIds[0]);
-      if (edge) refColor = edge.color;
-    }
-
+    let refColor = activeType === 'node' ? nodes.find(n => n.id === selectedIds[0])?.color : edges.find(e => e.id === selectedIds[0])?.color;
     if (!refColor) return;
-
-    let newSelection: string[] = [];
-    if (activeType === 'node') {
-      newSelection = nodes.filter(n => n.color === refColor).map(n => n.id);
-    } else {
-      newSelection = edges.filter(e => e.color === refColor).map(e => e.id);
-    }
-
+    let newSelection = activeType === 'node' ? nodes.filter(n => n.color === refColor).map(n => n.id) : edges.filter(e => e.color === refColor).map(e => e.id);
     setAppState(prev => ({ ...prev, selectedIds: newSelection }));
   }, [appState, nodes, edges]);
 
   const handleExport = () => {
-    const dataStr = JSON.stringify({ nodes, edges }, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
+    const blob = new Blob([JSON.stringify({ nodes, edges }, null, 2)], { type: "application/json" });
     const a = document.createElement('a');
-    a.href = url;
+    a.href = URL.createObjectURL(blob);
     a.download = `graph-project-${new Date().toISOString().slice(0,10)}.json`;
     a.click();
   };
@@ -382,9 +367,7 @@ const App: React.FC = () => {
         const result = JSON.parse(e.target?.result as string);
         if (result.nodes) setNodes(result.nodes);
         if (result.edges) setEdges(result.edges);
-      } catch (err) {
-        alert("Invalid JSON file");
-      }
+      } catch (err) { alert("Invalid JSON"); }
     };
     reader.readAsText(file);
   };
@@ -392,21 +375,14 @@ const App: React.FC = () => {
   const handlePointerOver = useCallback((e: any, data: GraphNodeData | GraphEdgeData) => {
     e.stopPropagation();
     if ('summary' in data) {
-      setHoverData({
-        label: data.label,
-        summary: data.summary || "",
-        full: data.fullContent || ""
-      });
+      setHoverData({ label: data.label, summary: data.summary || "", full: data.fullContent || "" });
     }
   }, []);
 
-  const handlePointerOut = useCallback(() => {
-    setHoverData(null);
-  }, []);
+  const handlePointerOut = useCallback(() => { setHoverData(null); }, []);
 
   return (
     <div className={`w-full h-screen relative bg-gray-50 flex flex-col font-sans`}>
-      
       <UIOverlay 
         appState={appState}
         nodes={nodes}
@@ -414,13 +390,9 @@ const App: React.FC = () => {
         cameraPos={cameraPosDisplay}
         uiPanels={uiPanels}
         setUiPanels={setUiPanels}
-        setAppState={setAppState} // Pass setter for language toggle
+        setAppState={setAppState}
         onAddNode={handleAddNode}
-        onToggleEdgeMode={() => setAppState(prev => ({ 
-          ...prev, 
-          mode: prev.mode === 'select' ? 'edge-start' : 'select',
-          edgeStartNodeId: null
-        }))}
+        onToggleEdgeMode={() => setAppState(prev => ({ ...prev, mode: prev.mode === 'select' ? 'edge-start' : 'select', edgeStartNodeId: null }))}
         onUpdateItem={handleUpdateItem}
         onDeleteItem={handleDeleteItem}
         onExport={handleExport}
@@ -433,32 +405,21 @@ const App: React.FC = () => {
         presentationMode={presentationMode}
         setPresentationMode={setPresentationMode}
         onRegeneratePresentation={regeneratePresentation}
+        onCakePresentation={handleCakePresentation}
+        onSmartGuide={handleSmartGuide}
       />
-
+      
       <div className="flex-1 relative mt-12"> 
         <Canvas shadows camera={{ position: [0, 10, 20], fov: 60 }} onPointerMissed={handleBackgroundClick}>
           <color attach="background" args={['#f0f2f5']} />
-          
           <Suspense fallback={null}>
             <ambientLight intensity={0.6} />
             <pointLight position={[10, 20, 10]} intensity={0.8} castShadow />
             <Grid infiniteGrid fadeDistance={50} sectionColor="#cbd5e1" cellColor="#e2e8f0" />
-            
             <CameraController targetPos={targetCameraPos} />
             <CameraReporter onUpdate={(pos) => setCameraPosDisplay({ x: pos.x, y: pos.y, z: pos.z })} />
-            
             <KeyboardControls />
-            <OrbitControls 
-              makeDefault 
-              enableDamping 
-              dampingFactor={0.1}
-              mouseButtons={{
-                LEFT: undefined, 
-                MIDDLE: THREE.MOUSE.PAN,
-                RIGHT: THREE.MOUSE.ROTATE
-              }}
-            />
-
+            <OrbitControls makeDefault enableDamping dampingFactor={0.1} mouseButtons={{ LEFT: undefined, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE }} />
             {nodes.map(node => (
               <GraphNode 
                 key={node.id} 
@@ -473,7 +434,6 @@ const App: React.FC = () => {
                 isDraggingEnabled={appState.mode === 'select'}
               />
             ))}
-
             {edges.map(edge => (
               <GraphEdge 
                 key={edge.id}
@@ -487,11 +447,9 @@ const App: React.FC = () => {
                 onPointerOut={handlePointerOut}
               />
             ))}
-
           </Suspense>
         </Canvas>
       </div>
-      
     </div>
   );
 };

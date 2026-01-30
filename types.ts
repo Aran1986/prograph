@@ -47,7 +47,7 @@ export interface AppState {
   activeType: 'node' | 'edge' | null;
   mode: InteractionMode;
   edgeStartNodeId: string | null;
-  appLanguage: Language; // Added global app language
+  appLanguage: Language; 
 }
 
 export interface UIPanelsState {
@@ -56,4 +56,11 @@ export interface UIPanelsState {
   camera: boolean;
   hints: boolean;
   filePanel: boolean; 
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp: number;
 }
