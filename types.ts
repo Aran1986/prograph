@@ -20,6 +20,8 @@ export interface GraphNodeData {
   files: AttachedFile[];
 }
 
+export type EdgeDirection = 'bidirectional' | 'source-to-target' | 'target-to-source';
+
 export interface GraphEdgeData {
   id: string;
   fromId: string;
@@ -30,6 +32,7 @@ export interface GraphEdgeData {
   summary: string;
   fullContent: string;
   files: AttachedFile[];
+  direction: EdgeDirection; // Added direction field
 }
 
 export interface CameraState {

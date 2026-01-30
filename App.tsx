@@ -9,7 +9,7 @@ import { GraphNodeData, GraphEdgeData, AppState, CameraState, UIPanelsState, Att
 import { generatePresentation, generateCakePresentation, generateSmartGuide } from './services/ai';
 import { getDir } from './utils/translations';
 
-// Keyboard Control Component for WASD/Arrow navigation
+// Keyboard Control Component for Arrow navigation ONLY
 const KeyboardControls = () => {
   const { camera, controls } = useThree();
   const [keys, setKeys] = useState<Record<string, boolean>>({});
@@ -30,7 +30,7 @@ const KeyboardControls = () => {
     // @ts-ignore
     if (!controls || !controls.enabled) return;
 
-    const speed = 20 * delta; // Movement speed
+    const speed = 20 * delta; 
     const moveVector = new THREE.Vector3();
 
     const forward = new THREE.Vector3();
@@ -42,10 +42,11 @@ const KeyboardControls = () => {
     right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
     right.normalize();
 
-    if (keys['ArrowUp'] || keys['KeyW']) moveVector.add(forward.multiplyScalar(speed));
-    if (keys['ArrowDown'] || keys['KeyS']) moveVector.add(forward.multiplyScalar(-speed));
-    if (keys['ArrowRight'] || keys['KeyD']) moveVector.add(right.multiplyScalar(-speed));
-    if (keys['ArrowLeft'] || keys['KeyA']) moveVector.add(right.multiplyScalar(speed));
+    // Removed WASD to prevent typing conflict
+    if (keys['ArrowUp']) moveVector.add(forward.multiplyScalar(speed));
+    if (keys['ArrowDown']) moveVector.add(forward.multiplyScalar(-speed));
+    if (keys['ArrowRight']) moveVector.add(right.multiplyScalar(-speed));
+    if (keys['ArrowLeft']) moveVector.add(right.multiplyScalar(speed));
 
     if (moveVector.lengthSq() > 0) {
       camera.position.add(moveVector);
@@ -83,7 +84,6 @@ const CameraController: React.FC<{ targetPos: CameraState | null }> = ({ targetP
 };
 
 const App: React.FC = () => {
-  // --- State ---
   const [nodes, setNodes] = useState<GraphNodeData[]>([]);
   const [edges, setEdges] = useState<GraphEdgeData[]>([]);
   const [appState, setAppState] = useState<AppState>({
@@ -93,14 +93,13 @@ const App: React.FC = () => {
     activeType: null,
     mode: 'select',
     edgeStartNodeId: null,
-    appLanguage: 'fa' // Default Language
+    appLanguage: 'fa' 
   });
   
   const [cameraPosDisplay, setCameraPosDisplay] = useState({ x: 0, y: 10, z: 20 });
   const [targetCameraPos, setTargetCameraPos] = useState<CameraState | null>(null);
   const [hoverData, setHoverData] = useState<{ label: string; summary: string; full: string } | null>(null);
   
-  // UI Panels Visibility State
   const [uiPanels, setUiPanels] = useState<UIPanelsState>({
     tools: true,
     properties: true,
@@ -109,7 +108,6 @@ const App: React.FC = () => {
     filePanel: false 
   });
 
-  // Presentation Mode State
   const [presentationMode, setPresentationMode] = useState<{ 
     isOpen: boolean; 
     content: string; 
@@ -126,7 +124,6 @@ const App: React.FC = () => {
     activeItemId: null
   });
 
-  // --- Persistence ---
   useEffect(() => {
     const saved = localStorage.getItem('graph_pro_data');
     if (saved) {
@@ -148,12 +145,9 @@ const App: React.FC = () => {
   }, [nodes, edges]);
 
   useEffect(() => {
-    // Update HTML dir attribute
     document.documentElement.dir = getDir(appState.appLanguage);
     document.documentElement.lang = appState.appLanguage;
   }, [appState.appLanguage]);
-
-  // --- Actions ---
 
   const handleAddNode = useCallback(() => {
     const newNode: GraphNodeData = {
@@ -190,7 +184,8 @@ const App: React.FC = () => {
              size: 0.1,
              summary: "Connection...",
              fullContent: "Description...",
-             files: []
+             files: [],
+             direction: 'bidirectional'
            };
            setEdges(current => [...current, newEdge]);
            return { ...prev, mode: 'select', selectedIds: [], activeType: null, edgeStartNodeId: null };
@@ -214,8 +209,33 @@ const App: React.FC = () => {
     }
   }, [appState.mode]);
 
-  // --- AI Presentation Handlers ---
+  // --- Image Save Handler (for Generated Images) ---
+  const handleAddFile = useCallback((file: AttachedFile, itemId: string) => {
+    // Save generated image to node/edge state
+    const targetNode = nodes.find(n => n.id === itemId);
+    if (targetNode) {
+        setNodes(prev => prev.map(n => n.id === itemId ? { ...n, files: [...n.files, file] } : n));
+        return;
+    }
+    const targetEdge = edges.find(e => e.id === itemId);
+    if (targetEdge) {
+        setEdges(prev => prev.map(e => e.id === itemId ? { ...e, files: [...e.files, file] } : e));
+    }
+  }, [nodes, edges]);
 
+  const handleRemoveFile = useCallback((fileId: string, itemId: string) => {
+    const targetNode = nodes.find(n => n.id === itemId);
+    if (targetNode) {
+        setNodes(prev => prev.map(n => n.id === itemId ? { ...n, files: n.files.filter(f => f.id !== fileId) } : n));
+        return;
+    }
+    const targetEdge = edges.find(e => e.id === itemId);
+    if (targetEdge) {
+        setEdges(prev => prev.map(e => e.id === itemId ? { ...e, files: e.files.filter(f => f.id !== fileId) } : e));
+    }
+  }, [nodes, edges]);
+
+  // --- AI Presentation Handlers ---
   const openPresentation = (content: string, item: GraphNodeData | GraphEdgeData, isLoading = false) => {
      setPresentationMode({
         isOpen: true,
@@ -231,7 +251,7 @@ const App: React.FC = () => {
     e.stopPropagation();
     const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
     if (target) {
-      openPresentation('', target, true); // Open loading state
+      openPresentation('', target, true);
       const htmlContent = await generatePresentation(target, appState.appLanguage);
       setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
@@ -252,7 +272,6 @@ const App: React.FC = () => {
     const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
     if (target) {
       openPresentation('', target, true);
-      // Pass full context (all nodes/edges) for topology analysis
       const htmlContent = await generateSmartGuide(target, nodes, edges, appState.appLanguage);
       setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
@@ -262,11 +281,8 @@ const App: React.FC = () => {
     const id = presentationMode.activeItemId;
     if (!id) return;
     const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
-    
     if (target) {
       setPresentationMode(prev => ({ ...prev, isLoading: true, targetLanguage: lang }));
-      // We default to standard presentation on language switch for simplicity, 
-      // or we could track which "mode" was active (Cake vs Smart) in a real app.
       const htmlContent = await generatePresentation(target, lang);
       setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
@@ -276,7 +292,6 @@ const App: React.FC = () => {
     setNodes(prev => {
       const draggedNode = prev.find(n => n.id === id);
       if (!draggedNode) return prev;
-
       const dx = newPos[0] - draggedNode.position[0];
       const dy = newPos[1] - draggedNode.position[1];
       const dz = newPos[2] - draggedNode.position[2];
@@ -407,6 +422,8 @@ const App: React.FC = () => {
         onRegeneratePresentation={regeneratePresentation}
         onCakePresentation={handleCakePresentation}
         onSmartGuide={handleSmartGuide}
+        onAddFile={handleAddFile} // Pass handler
+        onRemoveFile={handleRemoveFile} // Pass handler
       />
       
       <div className="flex-1 relative mt-12"> 

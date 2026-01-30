@@ -2,7 +2,8 @@ import { GoogleGenAI } from "@google/genai";
 import { GraphNodeData, GraphEdgeData, Language, ChatMessage } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-const modelName = 'gemini-2.5-flash-image';
+const textModel = 'gemini-2.5-flash-image';
+const imageModel = 'imagen-3.0-generate-001';
 
 // --- Helpers ---
 
@@ -44,7 +45,6 @@ const getFileParts = (files: any[]) => {
 };
 
 const getDeepGlobalContext = (nodes: GraphNodeData[], edges: GraphEdgeData[]) => {
-  // RAG: Iterate ALL nodes and edges, extract their summaries AND their text file contents.
   let context = "GLOBAL KNOWLEDGE GRAPH (RAG DATA):\n\n";
 
   nodes.forEach(n => {
@@ -52,12 +52,11 @@ const getDeepGlobalContext = (nodes: GraphNodeData[], edges: GraphEdgeData[]) =>
     context += `Summary: ${n.summary}\n`;
     context += `Full Content: ${n.fullContent}\n`;
     
-    // Extract text files attached to this node
     if (n.files && n.files.length > 0) {
       context += "ATTACHED DOCUMENTS:\n";
       n.files.forEach(f => {
         if (f.type.startsWith('text/')) {
-           context += `File: ${f.name}\nContent: ${decodeFileContent(f.content).substring(0, 2000)}...\n`; // Limit per file to avoid context overflow if huge
+           context += `File: ${f.name}\nContent: ${decodeFileContent(f.content).substring(0, 2000)}...\n`; 
         }
       });
     }
@@ -67,12 +66,42 @@ const getDeepGlobalContext = (nodes: GraphNodeData[], edges: GraphEdgeData[]) =>
   edges.forEach(e => {
      const from = nodes.find(n => n.id === e.fromId)?.label;
      const to = nodes.find(n => n.id === e.toId)?.label;
+     let dirText = "Bidirectional connection";
+     if (e.direction === 'source-to-target') dirText = `${from} --> ${to}`;
+     else if (e.direction === 'target-to-source') dirText = `${to} --> ${from}`;
+
      context += `EDGE [${e.label}] from ${from} to ${to}\n`;
+     context += `Direction: ${dirText}\n`;
      context += `Summary: ${e.summary}\n`;
      context += "--------------------------------------------------\n";
   });
 
   return context;
+};
+
+// --- Image Generation ---
+
+export const generateImage = async (prompt: string): Promise<string | null> => {
+  try {
+    const response = await ai.models.generateImages({
+      model: imageModel,
+      prompt: prompt,
+      config: {
+        numberOfImages: 1,
+        outputMimeType: 'image/jpeg',
+        aspectRatio: '16:9',
+      },
+    });
+
+    const base64EncodeString = response.generatedImages?.[0]?.image?.imageBytes;
+    if (base64EncodeString) {
+      return `data:image/jpeg;base64,${base64EncodeString}`;
+    }
+    return null;
+  } catch (e) {
+    console.error("Image gen error:", e);
+    return null;
+  }
 };
 
 // --- Standard Presentation ---
@@ -101,13 +130,16 @@ export const generatePresentation = async (
 
       INSTRUCTIONS:
       - Clean HTML with inline CSS. Direction: ${direction}, Text-align: ${align}.
-      - Use <img src="FILE_ID" class="ai-embedded-img" style="max-width:100%; border-radius:8px; margin: 10px 0;" /> to insert images visually.
+      - Use <img src="FILE_ID" class="ai-embedded-img" style="max-width:100%; border-radius:8px; margin: 10px 0;" /> to insert PROVIDED images visually.
+      - **CRITICAL**: If you describe a section or concept (like a team, a roadmap, or a product feature) and there is NO provided image for it, you MUST insert a special generation tag:
+        <ai-image-gen prompt="Detailed English prompt describing the scene for this section"></ai-image-gen>
+        Place this tag where the image should appear.
     `;
 
     parts.unshift({ text: promptText });
 
     const response = await ai.models.generateContent({
-      model: modelName,
+      model: textModel,
       contents: { parts: parts }
     });
 
@@ -118,7 +150,7 @@ export const generatePresentation = async (
   }
 };
 
-// --- Cake Presentation (Special Request) ---
+// --- Cake Presentation ---
 
 export const generateCakePresentation = async (
   item: GraphNodeData | GraphEdgeData,
@@ -136,34 +168,32 @@ export const generateCakePresentation = async (
     4- Competitors, their brand value, strengths, and weaknesses
     5- Our income outlook, market share, and how profit is obtained
     6- Our roadmap
-    7- Team (including top-notch salaries for the US, Eastern Europe, India, and Iran) + when I say team I also mean all things that we need to pay, meaning also servers and etc and I need a total payment for each month for team and these things
+    7- Team
     8- Exit strategy
     9- Its fit within our ecosystem
-    
-    Constraint: If there is info about a "Dubai trip", mention it separately before or after the list. Do not mix it.
-    Constraint: Do NOT hallucinate data. If data is missing in the files or content provided, state "Data not provided".
     `;
 
     const promptText = `
-      You are a strict presentation generator. You MUST follow the "Cake Presentation" format.
+      You are a strict presentation generator. Follow the "Cake Presentation" format.
       Output Language: ${langName}.
       
       Entity: ${item.label}
       Provided Content: ${item.fullContent}
       
-      Structure Required:
-      ${cakeRules}
-
-      Images:
-      ${descriptions}
+      Structure: ${cakeRules}
       
-      Output: HTML with inline CSS (${direction}). Use <img src="FILE_ID" ... /> for images.
+      Images: ${descriptions}
+      
+      Output: HTML (${direction}). 
+      - Use <img src="FILE_ID" ... /> for existing images.
+      - **CRITICAL**: For any of the 9 sections, if an image is missing, insert:
+        <ai-image-gen prompt="High quality business illustration for [Section Name]: [Details]"></ai-image-gen>
     `;
 
     parts.unshift({ text: promptText });
 
     const response = await ai.models.generateContent({
-      model: modelName,
+      model: textModel,
       contents: { parts: parts }
     });
 
@@ -186,60 +216,71 @@ export const generateSmartGuide = async (
     const direction = targetLanguage === 'fa' ? 'rtl' : 'ltr';
     const { parts, descriptions } = getFileParts(item.files);
 
-    // Analyze Topology
+    // Analyze Topology with Direction
     let topologyContext = "";
     if ('position' in item) {
       // It's a node
-      const incoming = allEdges.filter(e => e.toId === item.id).map(e => {
-        const source = allNodes.find(n => n.id === e.fromId);
+      const incoming = allEdges.filter(e => {
+        if (e.toId === item.id && (e.direction === 'source-to-target' || e.direction === 'bidirectional')) return true;
+        if (e.fromId === item.id && e.direction === 'target-to-source') return true;
+        return false;
+      }).map(e => {
+        const otherId = e.toId === item.id ? e.fromId : e.toId;
+        const source = allNodes.find(n => n.id === otherId);
         return `- Receives input from "${source?.label}" via edge "${e.label}"`;
       }).join('\n');
 
-      const outgoing = allEdges.filter(e => e.fromId === item.id).map(e => {
-        const target = allNodes.find(n => n.id === e.toId);
+      const outgoing = allEdges.filter(e => {
+         if (e.fromId === item.id && (e.direction === 'source-to-target' || e.direction === 'bidirectional')) return true;
+         if (e.toId === item.id && e.direction === 'target-to-source') return true;
+         return false;
+      }).map(e => {
+        const otherId = e.fromId === item.id ? e.toId : e.fromId;
+        const target = allNodes.find(n => n.id === otherId);
         return `- Sends output to "${target?.label}" via edge "${e.label}"`;
       }).join('\n');
 
       topologyContext = `
         TOPOLOGY ANALYSIS:
         This node (${item.label}) fits into the ecosystem as follows:
-        Incoming Connections:
+        Incoming Connections (Services Received):
         ${incoming || "None"}
         
-        Outgoing Connections:
+        Outgoing Connections (Services Provided):
         ${outgoing || "None"}
       `;
     } else {
       // It's an edge
       const source = allNodes.find(n => n.id === item.fromId);
       const target = allNodes.find(n => n.id === item.toId);
+      let flow = "Mutual exchange (Bidirectional)";
+      if (item.direction === 'source-to-target') flow = `One way: ${source?.label} -> ${target?.label}`;
+      if (item.direction === 'target-to-source') flow = `One way: ${target?.label} -> ${source?.label}`;
+
       topologyContext = `
         TOPOLOGY ANALYSIS:
-        This is a connection (${item.label}) that facilitates flow from "${source?.label}" to "${target?.label}".
+        This connection (${item.label}) facilitates flow between "${source?.label}" and "${target?.label}".
+        Flow Direction: ${flow}.
       `;
     }
 
     const promptText = `
-      You are a Smart Guide AI. Your job is to explain this specific entity's role in the larger system.
+      You are a Smart Guide AI. Explain the entity's role based on the TOPOLOGY.
       Output Language: ${langName}.
-      
-      Focus heavily on the RELATIONSHIPS and CONNECTIONS provided in the "TOPOLOGY ANALYSIS" below.
-      Explain how this entity provides services to others or receives services.
       
       Entity: ${item.label}
       ${topologyContext}
       
       Content: ${item.fullContent}
-
-      Images: ${descriptions}
-
+      
       Output: HTML format (${direction}).
+      Use <ai-image-gen prompt="..."> if images are missing for key concepts.
     `;
 
     parts.unshift({ text: promptText });
 
     const response = await ai.models.generateContent({
-      model: modelName,
+      model: textModel,
       contents: { parts: parts }
     });
 
@@ -261,53 +302,38 @@ export const chatWithAI = async (
 ): Promise<string> => {
   try {
     const langName = targetLanguage === 'fa' ? 'Persian' : 'English';
-    
-    // 1. Build Deep Global Context (Reads text files from all nodes)
     const globalContext = getDeepGlobalContext(allNodes, allEdges);
-    
-    // 2. Build History Text
     const historyText = history.slice(-5).map(m => `${m.role}: ${m.text}`).join('\n');
-
-    // 3. Current Item Context (with decoded files)
     const { fullTextContext } = getFileParts(currentItem.files);
 
     const prompt = `
       You are a highly intelligent AI assistant for a Graph Visualization Tool.
-      Your goal is to answer the user's questions by synthesizing information from the entire knowledge graph.
-      
       USER LANGUAGE: ${langName}.
       
       === CURRENT SELECTED ITEM ===
       Label: ${currentItem.label}
-      Summary: ${currentItem.summary}
       Full Description: ${currentItem.fullContent}
-      ATTACHED FILE CONTENTS FOR THIS ITEM:
-      ${fullTextContext}
+      FILES: ${fullTextContext}
       
-      === GLOBAL KNOWLEDGE BASE (RAG) ===
+      === GLOBAL KNOWLEDGE BASE ===
       ${globalContext}
       
       === CHAT HISTORY ===
       ${historyText}
       
-      === USER QUESTION ===
+      === QUESTION ===
       "${message}"
       
-      === INSTRUCTIONS ===
-      1. Use the provided "Global Knowledge Base" and "Attached File Contents" as your primary source of truth.
-      2. If the user asks about scientific validity, use your own internal knowledge + the provided data to verify.
-      3. If the user asks about connections, explicitly reference the "Edge" information in the global context.
-      4. Be professional, detailed, and analytical.
+      Answer professionally.
     `;
 
     const response = await ai.models.generateContent({
-      model: modelName,
+      model: textModel,
       contents: { parts: [{ text: prompt }] }
     });
 
     return response.text || "I'm sorry, I couldn't process that.";
   } catch (e) {
-    console.error(e);
     return "Error connecting to AI.";
   }
 };

@@ -4,7 +4,7 @@ import {
   Trash2, Save, MapPin, ChevronUp, ChevronDown, 
   Settings, Camera, FileJson, MousePointer2,
   Menu, HelpCircle, Eye, Check, X, Layers, FileText, Image as ImageIcon,
-  Loader2, Globe, RefreshCw, Cake, Lightbulb, MessageSquare, Send
+  Loader2, Globe, RefreshCw, Cake, Lightbulb, MessageSquare, Send, ArrowRightLeft, ArrowRight, ArrowLeft
 } from 'lucide-react';
 import { AppState, GraphNodeData, GraphEdgeData, UIPanelsState, AttachedFile, Language, ChatMessage } from '../types';
 import { translations, getDir } from '../utils/translations';
@@ -41,25 +41,28 @@ interface UIOverlayProps {
   onRegeneratePresentation: (lang: Language) => void;
   onCakePresentation: () => void;
   onSmartGuide: () => void;
+  onAddFile: (file: AttachedFile, itemId: string) => void;
+  onRemoveFile: (fileId: string, itemId: string) => void;
 }
 
+// Reduced width from w-64 to w-48 (approx 30% smaller)
 const Panel: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }> = ({ 
   title, icon, children, defaultOpen = true 
 }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   return (
-    <div className="bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-lg mb-4 overflow-hidden w-64 transition-all duration-200">
+    <div className="bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-lg overflow-hidden w-48 transition-all duration-200 pointer-events-auto">
       <div 
         className="bg-gray-100 p-2 flex items-center justify-between cursor-pointer hover:bg-gray-200 select-none"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
+        <div className="flex items-center gap-2 text-xs font-bold text-gray-700">
           {icon}
           <span>{title}</span>
         </div>
         {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
       </div>
-      {isOpen && <div className="p-3 text-sm">{children}</div>}
+      {isOpen && <div className="p-2 text-xs">{children}</div>}
     </div>
   );
 };
@@ -104,7 +107,8 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
   onAddNode, onToggleEdgeMode, onUpdateItem, onDeleteItem,
   onExport, onImport, onCameraTeleport, hoverInfo, onSelectSameColor,
   onFileUpload, onDeleteFile, presentationMode, setPresentationMode,
-  onRegeneratePresentation, onCakePresentation, onSmartGuide
+  onRegeneratePresentation, onCakePresentation, onSmartGuide,
+  onAddFile, onRemoveFile
 }) => {
   const [camInput, setCamInput] = useState({ x: 0, y: 10, z: 20 });
   const [activeMenu, setActiveMenu] = useState<'file' | 'view' | 'lang' | null>(null);
@@ -134,7 +138,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
     <>
       {/* --- Top Navigation Bar --- */}
       <div 
-        className="fixed top-0 left-0 right-0 h-12 bg-slate-800 text-white shadow-md z-40 flex items-center px-4 justify-between select-none"
+        className="fixed top-0 left-0 right-0 h-12 bg-slate-800 text-white shadow-md z-40 flex items-center px-4 justify-between select-none pointer-events-auto"
         onClick={(e) => e.stopPropagation()} 
         dir={getDir(lang)}
       >
@@ -152,7 +156,6 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                    <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={(e) => { if (e.target.files?.[0]) onImport(e.target.files[0]); setActiveMenu(null); }} />
               </div>}
             </div>
-            
              <div className="relative h-full flex items-center">
               <button onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === 'view' ? null : 'view'); }} className="px-3 py-1 rounded hover:bg-slate-700 transition-colors">{t.view}</button>
               {activeMenu === 'view' && <div className={`absolute top-10 ${lang === 'fa' ? 'right-0' : 'left-0'} w-56 bg-white text-slate-800 rounded shadow-xl z-50 p-2`}>
@@ -162,7 +165,6 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                    <label className="flex items-center gap-2 px-2 py-2 hover:bg-gray-50 rounded cursor-pointer"><input type="checkbox" checked={uiPanels.hints} onChange={() => togglePanel('hints')} className="rounded text-blue-600"/><span>{t.hintsPanel}</span></label>
               </div>}
             </div>
-
              <div className="relative h-full flex items-center">
               <button onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === 'lang' ? null : 'lang'); }} className="px-3 py-1 rounded hover:bg-slate-700 flex gap-1"><Globe size={16}/> {lang.toUpperCase()}</button>
               {activeMenu === 'lang' && <div className={`absolute top-10 ${lang === 'fa' ? 'right-0' : 'left-0'} w-32 bg-white text-slate-800 rounded shadow-xl z-50`}>
@@ -177,7 +179,6 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
 
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} lang={lang} />}
       
-      {/* Presentation Modal */}
       <PresentationModal 
         isOpen={presentationMode.isOpen} 
         isLoading={presentationMode.isLoading}
@@ -190,35 +191,74 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         uiLang={lang}
         onClose={() => setPresentationMode({ ...presentationMode, isOpen: false })}
         onRegenerate={onRegeneratePresentation}
+        onAddFile={onAddFile}
+        onRemoveFile={onRemoveFile}
       />
 
-      {/* Sidebar: Properties */}
+      {/* --- AI Actions Bar (Bottom Right) --- */}
+      {(activeNode || activeEdge) && !presentationMode.isOpen && (
+        <div className="fixed bottom-4 right-4 z-30 bg-white/95 backdrop-blur rounded-lg shadow-xl border border-blue-200 p-2 flex flex-col gap-2 animate-in slide-in-from-bottom-5 w-48">
+           <button 
+              onClick={onCakePresentation}
+              className="flex items-center gap-2 bg-pink-500 hover:bg-pink-600 text-white px-3 py-2 rounded text-xs font-bold transition-transform hover:scale-105 shadow-sm justify-center"
+              title="Strict format presentation"
+            >
+              <Cake size={14} /> <span>{t.cakePres}</span>
+            </button>
+            <button 
+              onClick={onSmartGuide}
+              className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded text-xs font-bold transition-transform hover:scale-105 shadow-sm justify-center"
+              title="Analyze connections and topology"
+            >
+              <Lightbulb size={14} /> <span>{t.smartGuide}</span>
+            </button>
+        </div>
+      )}
+
+      {/* Sidebar Container: Tools & Camera (Stacked) */}
+      <div className={`absolute top-16 ${lang === 'fa' ? 'right-4' : 'left-4'} z-10 flex flex-col gap-4 pointer-events-none`}>
+        {uiPanels.tools && (
+          <Panel title={t.toolTitle} icon={<Settings size={16} />}>
+            <div className="flex flex-col gap-2">
+              <button onClick={onAddNode} className="flex items-center gap-2 bg-blue-500 text-white p-2 rounded justify-center"><Plus size={16}/>{t.newNode}</button>
+              <button onClick={onToggleEdgeMode} className="flex items-center gap-2 bg-gray-500 text-white p-2 rounded justify-center"><LinkIcon size={16}/>{appState.mode === 'select' ? t.connect : t.cancelConnect}</button>
+              {appState.mode !== 'select' && (
+                <div className="text-xs text-center text-orange-600 font-bold bg-orange-100 p-1 rounded border border-orange-200">
+                  {appState.mode === 'edge-start' ? t.selectSource : t.selectTarget}
+                </div>
+              )}
+            </div>
+          </Panel>
+        )}
+
+        {uiPanels.camera && (
+          <Panel title={t.camTitle} icon={<Camera size={16} />}>
+             <div className="flex gap-1 mb-2">
+                <input type="number" placeholder="X" className="w-1/3 border rounded p-1 text-xs text-center" value={camInput.x} onChange={e => setCamInput({...camInput, x: parseFloat(e.target.value)})} />
+                <input type="number" placeholder="Y" className="w-1/3 border rounded p-1 text-xs text-center" value={camInput.y} onChange={e => setCamInput({...camInput, y: parseFloat(e.target.value)})} />
+                <input type="number" placeholder="Z" className="w-1/3 border rounded p-1 text-xs text-center" value={camInput.z} onChange={e => setCamInput({...camInput, z: parseFloat(e.target.value)})} />
+             </div>
+             <button 
+              onClick={() => onCameraTeleport(camInput.x, camInput.y, camInput.z)}
+              className="w-full bg-slate-600 hover:bg-slate-700 text-white p-1.5 rounded text-xs flex items-center justify-center gap-1 transition-colors"
+            >
+               <MapPin size={12} /> {t.jump}
+             </button>
+             <div className="mt-2 text-center text-xs text-gray-500 font-mono">
+               Pos: {Math.round(cameraPos.x)}, {Math.round(cameraPos.y)}, {Math.round(cameraPos.z)}
+             </div>
+          </Panel>
+        )}
+      </div>
+
+      {/* Sidebar: Properties (Opposite Side) */}
       {uiPanels.properties && (
-        <div className={`absolute top-16 ${lang === 'fa' ? 'left-4' : 'right-4'} z-10 flex flex-col max-h-[90vh] overflow-y-auto pl-1 gap-0`}>
+        <div className={`absolute top-16 ${lang === 'fa' ? 'left-4' : 'right-4'} z-10 flex flex-col max-h-[90vh] overflow-y-auto pl-1 gap-0 pointer-events-none`}>
           <Panel title={t.propTitle} icon={<MousePointer2 size={16} />}>
             {(activeNode || activeEdge) && (
               <div className="flex flex-col gap-3">
                  
-                 {/* AI ACTIONS */}
-                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-2 rounded border border-blue-100 flex flex-col gap-2">
-                    <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest text-center">AI Actions</span>
-                    <button 
-                      onClick={onCakePresentation}
-                      className="flex items-center justify-center gap-2 bg-pink-100 hover:bg-pink-200 text-pink-700 border border-pink-200 p-1.5 rounded text-xs transition-colors"
-                      title="Strict format presentation"
-                    >
-                      <Cake size={14} /> <span>{t.cakePres}</span>
-                    </button>
-                    <button 
-                      onClick={onSmartGuide}
-                      className="flex items-center justify-center gap-2 bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-200 p-1.5 rounded text-xs transition-colors"
-                      title="Analyze connections and topology"
-                    >
-                      <Lightbulb size={14} /> <span>{t.smartGuide}</span>
-                    </button>
-                 </div>
-
-                 {/* RESTORED INPUTS - NO COMMENTS */}
+                 {/* Multi Select Header */}
                  {isMultiSelect && (
                    <div className="bg-blue-50 border-b border-blue-100 p-2 mb-2 rounded text-blue-800 text-xs font-bold flex items-center gap-2">
                       <Layers size={14} />
@@ -227,11 +267,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                  )}
                  
                  {!isMultiSelect && (
-                   <button 
-                    onClick={onSelectSameColor}
-                    className="flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 p-1.5 rounded text-xs transition-colors mb-1"
-                    title={t.selectSimilar}
-                   >
+                   <button onClick={onSelectSameColor} className="flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 p-1.5 rounded text-xs transition-colors mb-1">
                      <Eye size={14} /> <span>{t.selectSimilar}</span>
                    </button>
                  )}
@@ -241,6 +277,22 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                   <input type="text" className="w-full border rounded p-1 text-sm bg-gray-50 focus:bg-white transition-colors" value={activeNode?.label || activeEdge?.label} onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { label: e.target.value })} />
                  </div>
                  
+                 {/* Edge Direction Selector */}
+                 {activeEdge && (
+                    <div className="bg-orange-50 p-2 rounded border border-orange-100">
+                      <label className="text-xs text-orange-800 block mb-1 font-bold flex items-center gap-1"><ArrowRightLeft size={10}/> Flow Direction</label>
+                      <select 
+                        className="w-full text-xs p-1 rounded border border-orange-200 bg-white"
+                        value={activeEdge.direction || 'bidirectional'}
+                        onChange={(e) => onUpdateItem(activeEdge.id, 'edge', { direction: e.target.value as any })}
+                      >
+                         <option value="bidirectional">Bidirectional (Mutual)</option>
+                         <option value="source-to-target">Source &rarr; Target</option>
+                         <option value="target-to-source">Target &rarr; Source</option>
+                      </select>
+                    </div>
+                 )}
+
                  <div>
                   <label className="text-xs text-gray-500 block mb-1">{t.size}</label>
                   <input type="range" min={activeNode ? "0.5" : "0.05"} max={activeNode ? "3" : "0.5"} step="0.01" className="w-full" value={activeNode?.size || activeEdge?.size || 0.1} onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { size: parseFloat(e.target.value) })} />
@@ -256,7 +308,6 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
 
                  <hr className="border-gray-200" />
                  
-                 {/* File Upload Section */}
                  <div className="bg-slate-50 p-2 rounded border border-slate-200">
                   <div className="flex justify-between items-center mb-2">
                      <span className="text-xs font-bold text-slate-600">{t.files}</span>
@@ -304,45 +355,8 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
           </Panel>
         </div>
       )}
-
-      {/* Sidebar: Camera */}
-      {uiPanels.camera && (
-          <Panel title={t.camTitle} icon={<Camera size={16} />}>
-             <div className="flex gap-1 mb-2">
-                <input type="number" placeholder="X" className="w-1/3 border rounded p-1 text-xs text-center" value={camInput.x} onChange={e => setCamInput({...camInput, x: parseFloat(e.target.value)})} />
-                <input type="number" placeholder="Y" className="w-1/3 border rounded p-1 text-xs text-center" value={camInput.y} onChange={e => setCamInput({...camInput, y: parseFloat(e.target.value)})} />
-                <input type="number" placeholder="Z" className="w-1/3 border rounded p-1 text-xs text-center" value={camInput.z} onChange={e => setCamInput({...camInput, z: parseFloat(e.target.value)})} />
-             </div>
-             <button 
-              onClick={() => onCameraTeleport(camInput.x, camInput.y, camInput.z)}
-              className="w-full bg-slate-600 hover:bg-slate-700 text-white p-1.5 rounded text-xs flex items-center justify-center gap-1 transition-colors"
-            >
-               <MapPin size={12} /> {t.jump}
-             </button>
-             <div className="mt-2 text-center text-xs text-gray-500 font-mono">
-               Position: {Math.round(cameraPos.x)}, {Math.round(cameraPos.y)}, {Math.round(cameraPos.z)}
-             </div>
-          </Panel>
-        )}
-
-      {/* Tool Sidebar (Right/Left) */}
-      {uiPanels.tools && (
-        <div className={`absolute top-16 ${lang === 'fa' ? 'right-4' : 'left-4'} z-10 flex flex-col`}>
-          <Panel title={t.toolTitle} icon={<Settings size={16} />}>
-            <div className="flex flex-col gap-2">
-              <button onClick={onAddNode} className="flex items-center gap-2 bg-blue-500 text-white p-2 rounded justify-center"><Plus size={16}/>{t.newNode}</button>
-              <button onClick={onToggleEdgeMode} className="flex items-center gap-2 bg-gray-500 text-white p-2 rounded justify-center"><LinkIcon size={16}/>{appState.mode === 'select' ? t.connect : t.cancelConnect}</button>
-              {appState.mode !== 'select' && (
-                <div className="text-xs text-center text-orange-600 font-bold bg-orange-100 p-1 rounded border border-orange-200">
-                  {appState.mode === 'edge-start' ? t.selectSource : t.selectTarget}
-                </div>
-              )}
-            </div>
-          </Panel>
-        </div>
-      )}
       
-       {/* --- Tooltip Modal (Positioned Bottom Right) --- */}
+      {/* Tooltip & Hints */}
       {hoverInfo && !presentationMode.isOpen && (
         <div 
           className="fixed z-30 pointer-events-none bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-2xl border border-gray-600 max-w-sm transition-opacity"
@@ -355,7 +369,6 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         </div>
       )}
 
-      {/* --- Footer Hints --- */}
       {uiPanels.hints && (
         <div className="absolute bottom-4 left-4 text-xs text-gray-500 pointer-events-none bg-white/80 backdrop-blur-sm p-2 rounded border border-gray-200 shadow-sm z-10">
           {t.hints}
