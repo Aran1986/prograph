@@ -180,6 +180,28 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                 </button>
              </div>
 
+             {/* Dynamic AI Buttons (Visible when item selected) */}
+             {(activeNode || activeEdge) && !presentationMode.isOpen && (
+               <div className="flex items-center gap-1 mx-2 border-r border-slate-600 px-2 animate-in fade-in zoom-in duration-300">
+                  <button 
+                    onClick={onCakePresentation}
+                    className="px-2 py-1 rounded bg-pink-600 hover:bg-pink-700 flex items-center gap-1 transition-colors shadow-sm font-medium text-xs whitespace-nowrap"
+                    title={t.cakePres}
+                  >
+                    <Cake size={14} /> 
+                    <span className="hidden xl:inline">{t.cakePres}</span>
+                  </button>
+                  <button 
+                    onClick={onSmartGuide}
+                    className="px-2 py-1 rounded bg-amber-600 hover:bg-amber-700 flex items-center gap-1 transition-colors shadow-sm font-medium text-xs whitespace-nowrap"
+                    title={t.smartGuide}
+                  >
+                    <Lightbulb size={14} /> 
+                    <span className="hidden xl:inline">{t.smartGuide}</span>
+                  </button>
+               </div>
+             )}
+
              <div className="relative h-full flex items-center">
               <button onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === 'file' ? null : 'file'); }} className="px-3 py-1 rounded hover:bg-slate-700 transition-colors">{t.file}</button>
               {activeMenu === 'file' && <div className={`absolute top-10 ${lang === 'fa' ? 'right-0' : 'left-0'} w-48 bg-white text-slate-800 rounded shadow-xl z-50`}>
@@ -246,29 +268,6 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         onAddFile={onAddFile}
         onRemoveFile={onRemoveFile}
       />
-
-      {/* --- AI Actions Bar (Bottom Left) --- */}
-      {(activeNode || activeEdge) && !presentationMode.isOpen && (
-        <div 
-          className="fixed z-30 flex flex-col gap-2 animate-in slide-in-from-bottom-5 pointer-events-auto"
-          style={{ bottom: '4rem', left: '1rem' }}
-        >
-           <button 
-              onClick={onCakePresentation}
-              className="flex items-center gap-2 bg-pink-500 hover:bg-pink-600 text-white px-3 py-2 rounded-lg text-xs font-bold transition-transform hover:scale-105 shadow-md justify-start w-40"
-              title="Strict format presentation"
-            >
-              <Cake size={16} /> <span>{t.cakePres}</span>
-            </button>
-            <button 
-              onClick={onSmartGuide}
-              className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-xs font-bold transition-transform hover:scale-105 shadow-md justify-start w-40"
-              title="Analyze connections and topology"
-            >
-              <Lightbulb size={16} /> <span>{t.smartGuide}</span>
-            </button>
-        </div>
-      )}
 
       {/* Sidebar Container: Tools & Camera (STACKED to prevent overlap) */}
       <div className={`absolute top-16 ${lang === 'fa' ? 'right-4' : 'left-4'} z-10 flex flex-col gap-4 pointer-events-none`}>
