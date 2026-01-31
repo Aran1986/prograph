@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Layers, Loader2, X, RefreshCw, Save, Edit, Bot, ImagePlus, Check, Trash2, GripVertical } from 'lucide-react';
+import { Layers, Loader2, X, RefreshCw, Save, Edit, Bot, ImagePlus, Check, Trash2, GripVertical, Undo2, Redo2 } from 'lucide-react';
 import { AttachedFile, Language, ChatMessage, GraphNodeData, GraphEdgeData } from '../types';
 import { translations, getDir } from '../utils/translations';
 import { ChatWidget } from './ChatWidget';
@@ -270,7 +270,7 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in duration-300" dir={getDir(uiLang)}>
+    <div className="fixed inset-0 top-12 z-[100] bg-white flex flex-col animate-in fade-in duration-300 shadow-2xl" dir={getDir(uiLang)}>
       {/* Header */}
       <div className="h-16 bg-slate-900 text-white flex items-center justify-between px-6 shadow-md shrink-0">
         <div className="flex items-center gap-2">
@@ -284,6 +284,16 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
           <div className="flex items-center gap-2 mr-4">
              {isEditing ? (
                  <>
+                    {/* Text specific Undo/Redo for the editor */}
+                    <div className="flex items-center gap-1 bg-slate-800 rounded p-1 mx-2 border border-slate-700">
+                        <button onClick={() => document.execCommand('undo')} className="p-1.5 hover:bg-slate-700 rounded text-gray-300 hover:text-white" title={t.undo}>
+                            <Undo2 size={18} />
+                        </button>
+                        <button onClick={() => document.execCommand('redo')} className="p-1.5 hover:bg-slate-700 rounded text-gray-300 hover:text-white" title={t.redo}>
+                            <Redo2 size={18} />
+                        </button>
+                    </div>
+
                     <button onClick={handleSave} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg text-sm font-bold transition-colors shadow-sm">
                         <Save size={18} /> {t.saveChanges}
                     </button>

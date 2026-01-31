@@ -82,7 +82,7 @@ const Panel: React.FC<{ title: string; icon: React.ReactNode; children: React.Re
 const HelpModal: React.FC<{ onClose: () => void; lang: Language }> = ({ onClose, lang }) => {
   const t = translations[lang];
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" dir={getDir(lang)}>
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" dir={getDir(lang)}>
       <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full overflow-hidden">
         <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
           <h2 className="text-xl font-bold flex items-center gap-2">
@@ -153,7 +153,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
     <>
       {/* --- Top Navigation Bar --- */}
       <div 
-        className="fixed top-0 left-0 right-0 h-12 bg-slate-800 text-white shadow-md z-40 flex items-center px-4 justify-between select-none pointer-events-auto"
+        className="fixed top-0 left-0 right-0 h-12 bg-slate-800 text-white shadow-md z-[120] flex items-center px-4 justify-between select-none pointer-events-auto"
         onClick={(e) => e.stopPropagation()} 
         dir={getDir(lang)}
       >
@@ -293,7 +293,6 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         edges={edges}
       />
 
-      {/* Passing the handleSaveModalContent callback (implicitly used via onRegeneratePresentation update in App, but more importantly via props drilling if we were to refactor purely. For now, App.tsx handles the presentation logic directly with props) */}
       <PresentationModal 
         isOpen={presentationMode.isOpen} 
         isLoading={presentationMode.isLoading}
@@ -307,16 +306,12 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         uiLang={lang}
         onClose={() => setPresentationMode({ ...presentationMode, isOpen: false })}
         onRegenerate={onRegeneratePresentation}
-        // In the App.tsx I'll be passing handleSaveModalContent here.
-        // But since UIOverlay calls App.tsx props, I need to make sure App.tsx passes it.
-        // Wait, UIOverlay doesn't render PresentationModal. App.tsx does.
-        // I am updating UIOverlay just to be safe with types if needed, but actually I need to update App.tsx to pass the new prop to PresentationModal.
-        onSaveContent={(c) => {}} // Placeholder, actual logic is in App.tsx
+        onSaveContent={(c) => {}} // Placeholder
         onAddFile={onAddFile}
         onRemoveFile={onRemoveFile}
       />
 
-      {/* Sidebar Container: Tools & Camera (STACKED to prevent overlap) */}
+      {/* Sidebar Container: Tools & Camera */}
       <div className={`absolute top-16 ${lang === 'fa' ? 'right-4' : 'left-4'} z-10 flex flex-col gap-4 pointer-events-none`}>
         {uiPanels.tools && (
           <Panel title={t.toolTitle} icon={<Settings size={16} />}>
@@ -332,7 +327,6 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
           </Panel>
         )}
 
-        {/* Camera Panel is now strictly UNDER the tools panel in the flex container */}
         {uiPanels.camera && (
           <Panel title={t.camTitle} icon={<Camera size={16} />}>
              <div className="flex gap-1 mb-2">
@@ -353,14 +347,13 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         )}
       </div>
 
-      {/* Sidebar: Properties (Opposite Side) */}
+      {/* Sidebar: Properties */}
       {uiPanels.properties && (
         <div className={`absolute top-16 ${lang === 'fa' ? 'left-4' : 'right-4'} z-10 flex flex-col max-h-[90vh] overflow-y-auto pl-1 gap-0 pointer-events-none`}>
           <Panel title={t.propTitle} icon={<MousePointer2 size={16} />}>
             {(activeNode || activeEdge) && (
               <div className="flex flex-col gap-3">
                  
-                 {/* Multi Select Header */}
                  {isMultiSelect && (
                    <div className="bg-blue-50 border-b border-blue-100 p-2 mb-2 rounded text-blue-800 text-xs font-bold flex items-center gap-2">
                       <Layers size={14} />
@@ -380,12 +373,11 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                     type="text" 
                     className="w-full border rounded p-1 text-sm bg-gray-50 focus:bg-white transition-colors" 
                     value={activeNode?.label || activeEdge?.label} 
-                    onFocus={onPushHistory} // Save history on focus
+                    onFocus={onPushHistory} 
                     onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { label: e.target.value })} 
                   />
                  </div>
                  
-                 {/* Edge Direction Selector */}
                  {activeEdge && (
                     <div className="bg-orange-50 p-2 rounded border border-orange-100">
                       <label className="text-xs text-orange-800 block mb-1 font-bold flex items-center gap-1"><ArrowRightLeft size={10}/> Flow Direction</label>
@@ -402,7 +394,6 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                     </div>
                  )}
 
-                 {/* Node Shape Selector */}
                  {activeNode && (
                     <div>
                       <label className="text-xs text-gray-500 block mb-1">{t.shape}</label>
@@ -432,7 +423,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                   <input 
                     type="range" min={activeNode ? "0.5" : "0.05"} max={activeNode ? "3" : "0.5"} step="0.01" className="w-full" 
                     value={activeNode?.size || activeEdge?.size || 0.1} 
-                    onPointerDown={onPushHistory} // Save history on drag start
+                    onPointerDown={onPushHistory}
                     onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { size: parseFloat(e.target.value) })} 
                   />
                  </div>
@@ -443,7 +434,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                     <input 
                       type="color" className="w-8 h-8 cursor-pointer rounded border border-gray-300 p-0 overflow-hidden" 
                       value={activeNode?.color || activeEdge?.color} 
-                      onClick={onPushHistory} // Save history on click/open
+                      onClick={onPushHistory} 
                       onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { color: e.target.value })} 
                     />
                     <div className="text-xs text-gray-400 flex items-center">{activeNode?.color || activeEdge?.color}</div>
