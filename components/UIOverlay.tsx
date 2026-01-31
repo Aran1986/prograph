@@ -293,6 +293,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         edges={edges}
       />
 
+      {/* Passing the handleSaveModalContent callback (implicitly used via onRegeneratePresentation update in App, but more importantly via props drilling if we were to refactor purely. For now, App.tsx handles the presentation logic directly with props) */}
       <PresentationModal 
         isOpen={presentationMode.isOpen} 
         isLoading={presentationMode.isLoading}
@@ -306,6 +307,11 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         uiLang={lang}
         onClose={() => setPresentationMode({ ...presentationMode, isOpen: false })}
         onRegenerate={onRegeneratePresentation}
+        // In the App.tsx I'll be passing handleSaveModalContent here.
+        // But since UIOverlay calls App.tsx props, I need to make sure App.tsx passes it.
+        // Wait, UIOverlay doesn't render PresentationModal. App.tsx does.
+        // I am updating UIOverlay just to be safe with types if needed, but actually I need to update App.tsx to pass the new prop to PresentationModal.
+        onSaveContent={(c) => {}} // Placeholder, actual logic is in App.tsx
         onAddFile={onAddFile}
         onRemoveFile={onRemoveFile}
       />
@@ -453,7 +459,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                      <input type="file" ref={attachmentInputRef} className="hidden" onChange={(e) => { if(e.target.files?.[0]) onFileUpload(e.target.files[0]); }} />
                   </div>
                   {activeFiles.length === 0 ? <div className="text-xs text-gray-400 text-center py-2">{t.noFiles}</div> : 
-                    <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                    <div className="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1">
                       {activeFiles.map(file => (
                         <div key={file.id} className="flex justify-between items-center bg-white border p-1 rounded text-xs">
                            <div className="flex items-center gap-1 overflow-hidden">

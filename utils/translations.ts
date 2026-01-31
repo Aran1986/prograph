@@ -55,6 +55,11 @@ export const translations = {
     finalizeDesc: 'روش تولید خروجی نهایی را انتخاب کنید:',
     mergeContent: 'تجمیع محتوا (Merge)',
     aiFinalize: 'تالیف هوشمند (AI)',
+    edit: 'ویرایش',
+    saveChanges: 'ثبت تغییرات',
+    discard: 'لغو',
+    generateAI: 'تولید محتوا (AI)',
+    startWriting: 'شروع به نوشتن کنید یا از هوش مصنوعی استفاده کنید...',
     shapes: {
       sphere: 'کره',
       box: 'مکعب',
@@ -169,6 +174,11 @@ export const translations = {
     finalizeDesc: 'Choose how to generate the final output:',
     mergeContent: 'Merge Content',
     aiFinalize: 'AI Generation',
+    edit: 'Edit',
+    saveChanges: 'Save Changes',
+    discard: 'Discard',
+    generateAI: 'Generate (AI)',
+    startWriting: 'Start writing or use AI generation...',
     shapes: {
       sphere: 'Sphere',
       box: 'Box',

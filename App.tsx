@@ -210,7 +210,7 @@ const App: React.FC = () => {
       id: crypto.randomUUID(),
       label: `Node ${nodes.length + 1}`,
       summary: "Short summary...",
-      fullContent: "Detailed description...",
+      fullContent: "", // Initialize empty as per requirement
       color: "#2196F3",
       size: 1,
       position: [(Math.random() * 10) - 5, 0, (Math.random() * 10) - 5],
@@ -240,7 +240,7 @@ const App: React.FC = () => {
              color: '#666666',
              size: 0.1,
              summary: "Connection...",
-             fullContent: "Description...",
+             fullContent: "",
              files: [],
              direction: 'bidirectional'
            };
@@ -318,9 +318,8 @@ const App: React.FC = () => {
         modeTitle = t.modes[appState.aiMode];
       }
 
-      openPresentation('', target, modeTitle, true);
-      const htmlContent = await generateModeContent(target, appState.aiMode, appState.appLanguage);
-      setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
+      // NO AUTOMATIC GENERATION here. Just open with existing content.
+      openPresentation(target.fullContent || "", target, modeTitle, false);
     }
   }, [nodes, edges, appState.appLanguage, appState.aiMode]);
 
@@ -329,8 +328,9 @@ const App: React.FC = () => {
     const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
     if (target) {
       const t = translations[appState.appLanguage];
-      openPresentation('', target, t.cakePres, true);
+      openPresentation(target.fullContent || "", target, t.cakePres, true);
       const htmlContent = await generateCakePresentation(target, appState.appLanguage);
+      handleSaveModalContent(htmlContent); // Save result
       setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
   }, [nodes, edges, appState.selectedIds, appState.appLanguage]);
@@ -340,11 +340,29 @@ const App: React.FC = () => {
     const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
     if (target) {
       const t = translations[appState.appLanguage];
-      openPresentation('', target, t.smartGuide, true);
+      openPresentation(target.fullContent || "", target, t.smartGuide, true);
       const htmlContent = await generateSmartGuide(target, nodes, edges, appState.appLanguage);
+      handleSaveModalContent(htmlContent); // Save result
       setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
   }, [nodes, edges, appState.selectedIds, appState.appLanguage]);
+
+  const handleSaveModalContent = useCallback((newContent: string) => {
+     saveHistory();
+     const id = presentationMode.activeItemId;
+     if (!id) return;
+     
+     // Update Node/Edge State
+     const targetNode = nodes.find(n => n.id === id);
+     if (targetNode) {
+        setNodes(prev => prev.map(n => n.id === id ? { ...n, fullContent: newContent } : n));
+     } else {
+        const targetEdge = edges.find(e => e.id === id);
+        if (targetEdge) {
+            setEdges(prev => prev.map(e => e.id === id ? { ...e, fullContent: newContent } : e));
+        }
+     }
+  }, [nodes, edges, presentationMode.activeItemId, saveHistory]);
 
   const regeneratePresentation = async (lang: Language) => {
     const id = presentationMode.activeItemId;
@@ -353,6 +371,7 @@ const App: React.FC = () => {
     if (target) {
       setPresentationMode(prev => ({ ...prev, isLoading: true, targetLanguage: lang }));
       const htmlContent = await generateModeContent(target, appState.aiMode, lang);
+      handleSaveModalContent(htmlContent); // Save result
       setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
   };
