@@ -209,13 +209,6 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
 
   const handleToggleEdit = () => {
       if (!isEditing) {
-          // Entering edit mode: Prepare the content for WYSIWYG
-          // We need to ensure image sources are viewable in the editor (base64)
-          // But when saving, we might want to keep IDs. For simplicity in this app, 
-          // we will inject base64 for viewing, and the save process keeps the HTML. 
-          // NOTE: A robust system would swap IDs <-> URLs.
-          // For now, let's inject Base64 so the user sees the images while editing.
-          
           let editableContent = localContent;
           files.forEach(file => {
             if (file.type.startsWith('image/')) {
@@ -223,23 +216,57 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
             }
           });
           
-          // Wait for render then set HTML
           setTimeout(() => {
               if (editorRef.current) editorRef.current.innerHTML = editableContent;
           }, 0);
       } else {
-          // Exiting without save (Discard)
           setLocalContent(content);
       }
       setIsEditing(!isEditing);
   };
 
-  // Handle Drag Start from Gallery
+  // --- Drag and Drop Handlers ---
   const handleDragStart = (e: React.DragEvent, file: AttachedFile) => {
-      // Create an HTML img tag string
       const imgTag = `<img src="${file.content}" data-file-id="${file.id}" class="ai-embedded-img" style="max-width:100%; height:auto; border-radius:8px; margin: 10px 0; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); display: block;" />`;
       e.dataTransfer.setData('text/html', imgTag);
       e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleEditorDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleEditorDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const html = e.dataTransfer.getData('text/html');
+    
+    if (html) {
+       // Attempt to drop at cursor position
+       let range = null;
+       // @ts-ignore
+       if (document.caretRangeFromPoint) { // Webkit
+          // @ts-ignore
+          range = document.caretRangeFromPoint(e.clientX, e.clientY);
+       } else if ((document as any).caretPositionFromPoint) { // Firefox
+          const pos = (document as any).caretPositionFromPoint(e.clientX, e.clientY);
+          if (pos) {
+             range = document.createRange();
+             range.setStart(pos.offsetNode, pos.offset);
+             range.collapse(true);
+          }
+       }
+
+       if (range) {
+          const selection = window.getSelection();
+          if (selection) {
+             selection.removeAllRanges();
+             selection.addRange(range);
+          }
+       }
+
+       document.execCommand('insertHTML', false, html);
+    }
   };
 
   return (
@@ -310,7 +337,7 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
             {isEditing && (
                 <div className="bg-blue-50 border-b border-blue-100 p-3 text-xs text-blue-800 flex items-center justify-between px-6">
                     <span className="font-bold flex items-center gap-2"><Edit size={14}/> WYSIWYG Editor Mode</span>
-                    <span>Start typing directly below or drag images from the right.</span>
+                    <span>Start typing directly below or drag images from the right sidebar.</span>
                 </div>
             )}
 
@@ -328,9 +355,8 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
                             className="prose prose-lg max-w-none outline-none min-h-[500px] cursor-text [&_*]:box-border [&_*]:max-w-full"
                             contentEditable={true}
                             dir={targetLanguage === 'fa' ? 'rtl' : 'ltr'}
-                            onInput={() => {
-                                // Optional: Auto-save to ref logic could go here
-                            }}
+                            onDragOver={handleEditorDragOver}
+                            onDrop={handleEditorDrop}
                         />
                     </div>
                     
@@ -359,7 +385,18 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
                                               <GripVertical className="text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
                                           </div>
                                       </div>
-                                      <div className="text-xs text-gray-600 truncate px-1">{f.name}</div>
+                                      <div className="flex justify-between items-center">
+                                         <div className="text-xs text-gray-600 truncate px-1 max-w-[150px]">{f.name}</div>
+                                         {activeItemId && (
+                                            <button 
+                                              onClick={() => onRemoveFile(f.id, activeItemId)}
+                                              className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded"
+                                              title="Delete Image"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                         )}
+                                      </div>
                                    </div>
                                ))}
                            </div>
