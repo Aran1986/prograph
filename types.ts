@@ -1,6 +1,24 @@
 import * as THREE from 'three';
 
 export type Language = 'fa' | 'en';
+export type AIMode = 
+  | 'presentation' 
+  | 'writing' 
+  | 'coding' 
+  | 'law' 
+  | 'chemistry'
+  | 'investigation'
+  | 'journalism'
+  | 'genealogy'
+  | 'network'
+  | 'supplyChain'
+  | 'seo'
+  | 'financial'
+  | 'pkm'
+  | 'mindMap'
+  | 'gameDesign';
+
+export type NodeShape = 'sphere' | 'box' | 'cylinder' | 'capsule' | 'torus' | 'cone';
 
 export interface AttachedFile {
   id: string;
@@ -20,6 +38,7 @@ export interface GraphNodeData {
   size: number;
   position: [number, number, number];
   files: AttachedFile[];
+  shape?: NodeShape;
 }
 
 export type EdgeDirection = 'bidirectional' | 'source-to-target' | 'target-to-source';
@@ -53,6 +72,7 @@ export interface AppState {
   mode: InteractionMode;
   edgeStartNodeId: string | null;
   appLanguage: Language; 
+  aiMode: AIMode; // New field for AI Mode
 }
 
 export interface UIPanelsState {

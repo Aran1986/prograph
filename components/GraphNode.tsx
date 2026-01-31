@@ -72,6 +72,19 @@ export const GraphNode: React.FC<GraphNodeProps> = ({
 
   const emissiveColor = isSelected ? '#444444' : (isEdgeStart ? '#00ff00' : '#000000');
   const scale = dragging ? data.size * 1.1 : data.size;
+  const shape = data.shape || 'sphere';
+
+  const renderGeometry = () => {
+    switch (shape) {
+      case 'box': return <boxGeometry args={[0.9, 0.9, 0.9]} />;
+      case 'cylinder': return <cylinderGeometry args={[0.5, 0.5, 1, 32]} />;
+      case 'capsule': return <capsuleGeometry args={[0.4, 1, 4, 8]} />;
+      case 'torus': return <torusGeometry args={[0.4, 0.2, 16, 100]} />;
+      case 'cone': return <coneGeometry args={[0.5, 1, 32]} />;
+      case 'sphere':
+      default: return <sphereGeometry args={[0.7, 32, 32]} />;
+    }
+  };
 
   return (
     <group position={data.position}>
@@ -85,7 +98,7 @@ export const GraphNode: React.FC<GraphNodeProps> = ({
         onPointerMove={handlePointerMove}
         scale={[scale, scale, scale]}
       >
-        <sphereGeometry args={[0.7, 32, 32]} />
+        {renderGeometry()}
         <meshStandardMaterial
           color={data.color}
           emissive={emissiveColor}

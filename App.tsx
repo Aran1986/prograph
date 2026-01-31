@@ -6,8 +6,8 @@ import { GraphNode } from './components/GraphNode';
 import { GraphEdge } from './components/GraphEdge';
 import { UIOverlay } from './components/UIOverlay';
 import { GraphNodeData, GraphEdgeData, AppState, CameraState, UIPanelsState, AttachedFile, Language } from './types';
-import { generatePresentation, generateCakePresentation, generateSmartGuide } from './services/ai';
-import { getDir } from './utils/translations';
+import { generatePresentation, generateCakePresentation, generateSmartGuide, generateModeContent } from './services/ai';
+import { getDir, translations } from './utils/translations';
 
 // Keyboard Control Component for Arrow navigation ONLY
 const KeyboardControls = () => {
@@ -93,7 +93,8 @@ const App: React.FC = () => {
     activeType: null,
     mode: 'select',
     edgeStartNodeId: null,
-    appLanguage: 'fa' 
+    appLanguage: 'fa',
+    aiMode: 'presentation'
   });
 
   // History Stacks for Undo/Redo
@@ -119,6 +120,7 @@ const App: React.FC = () => {
     activeFiles: AttachedFile[]; 
     targetLanguage: Language;
     activeItemId: string | null;
+    modeTitle?: string;
   }>({
     isOpen: false,
     content: '',
@@ -293,14 +295,15 @@ const App: React.FC = () => {
   }, [nodes, edges, saveHistory]);
 
   // --- AI Presentation Handlers ---
-  const openPresentation = (content: string, item: GraphNodeData | GraphEdgeData, isLoading = false) => {
+  const openPresentation = (content: string, item: GraphNodeData | GraphEdgeData, title: string, isLoading = false) => {
      setPresentationMode({
         isOpen: true,
         content: content,
         isLoading: isLoading,
         activeFiles: item.files || [],
         targetLanguage: appState.appLanguage,
-        activeItemId: item.id
+        activeItemId: item.id,
+        modeTitle: title
       });
   };
 
@@ -308,17 +311,25 @@ const App: React.FC = () => {
     e.stopPropagation();
     const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
     if (target) {
-      openPresentation('', target, true);
-      const htmlContent = await generatePresentation(target, appState.appLanguage);
+      // Determine title based on current mode
+      const t = translations[appState.appLanguage];
+      let modeTitle = t.presentationTitle;
+      if (appState.aiMode !== 'presentation') {
+        modeTitle = t.modes[appState.aiMode];
+      }
+
+      openPresentation('', target, modeTitle, true);
+      const htmlContent = await generateModeContent(target, appState.aiMode, appState.appLanguage);
       setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
-  }, [nodes, edges, appState.appLanguage]);
+  }, [nodes, edges, appState.appLanguage, appState.aiMode]);
 
   const handleCakePresentation = useCallback(async () => {
     const id = appState.selectedIds[0];
     const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
     if (target) {
-      openPresentation('', target, true);
+      const t = translations[appState.appLanguage];
+      openPresentation('', target, t.cakePres, true);
       const htmlContent = await generateCakePresentation(target, appState.appLanguage);
       setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
@@ -328,7 +339,8 @@ const App: React.FC = () => {
     const id = appState.selectedIds[0];
     const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
     if (target) {
-      openPresentation('', target, true);
+      const t = translations[appState.appLanguage];
+      openPresentation('', target, t.smartGuide, true);
       const htmlContent = await generateSmartGuide(target, nodes, edges, appState.appLanguage);
       setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
@@ -340,7 +352,7 @@ const App: React.FC = () => {
     const target = nodes.find(n => n.id === id) || edges.find(e => e.id === id);
     if (target) {
       setPresentationMode(prev => ({ ...prev, isLoading: true, targetLanguage: lang }));
-      const htmlContent = await generatePresentation(target, lang);
+      const htmlContent = await generateModeContent(target, appState.aiMode, lang);
       setPresentationMode(prev => ({ ...prev, content: htmlContent, isLoading: false }));
     }
   };

@@ -5,12 +5,13 @@ import {
   Settings, Camera, FileJson, MousePointer2,
   Menu, HelpCircle, Eye, Check, X, Layers, FileText, Image as ImageIcon,
   Loader2, Globe, RefreshCw, Cake, Lightbulb, MessageSquare, Send, ArrowRightLeft,
-  Undo2, Redo2, BrainCircuit
+  Undo2, Redo2, BrainCircuit, Bot, Sparkles, Box, Circle, Triangle, Cylinder, Disc
 } from 'lucide-react';
-import { AppState, GraphNodeData, GraphEdgeData, UIPanelsState, AttachedFile, Language, ChatMessage } from '../types';
+import { AppState, GraphNodeData, GraphEdgeData, UIPanelsState, AttachedFile, Language, ChatMessage, AIMode, NodeShape } from '../types';
 import { translations, getDir } from '../utils/translations';
 import { PresentationModal } from './PresentationModal';
 import { AIArchitectModal } from './AIArchitectModal';
+import { FinalizationModal } from './FinalizationModal';
 
 interface UIOverlayProps {
   appState: AppState;
@@ -38,6 +39,7 @@ interface UIOverlayProps {
     activeFiles: AttachedFile[];
     targetLanguage: Language;
     activeItemId: string | null;
+    modeTitle?: string;
   };
   setPresentationMode: (mode: any) => void;
   onRegeneratePresentation: (lang: Language) => void;
@@ -125,6 +127,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
   const [activeMenu, setActiveMenu] = useState<'file' | 'view' | 'lang' | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [showArchitect, setShowArchitect] = useState(false);
+  const [showFinalize, setShowFinalize] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
@@ -178,6 +181,25 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                 >
                   <Redo2 size={16} />
                 </button>
+             </div>
+
+             {/* Mode Selector */}
+             <div className="flex items-center gap-2 mx-2 bg-slate-700 rounded px-2 py-1">
+               <Bot size={16} className="text-green-400"/>
+               <select 
+                 className="bg-transparent text-xs text-white outline-none cursor-pointer w-24 md:w-auto"
+                 value={appState.aiMode}
+                 onChange={(e) => setAppState(prev => ({ ...prev, aiMode: e.target.value as AIMode }))}
+               >
+                 <option value="presentation" className="text-slate-900">{t.modes.presentation}</option>
+                 <option value="writing" className="text-slate-900">{t.modes.writing}</option>
+                 <option value="coding" className="text-slate-900">{t.modes.coding}</option>
+                 <option value="law" className="text-slate-900">{t.modes.law}</option>
+                 <option value="chemistry" className="text-slate-900">{t.modes.chemistry}</option>
+                 <option value="investigation" className="text-slate-900">{t.modes.investigation}</option>
+                 <option value="journalism" className="text-slate-900">{t.modes.journalism}</option>
+                 <option value="gameDesign" className="text-slate-900">{t.modes.gameDesign}</option>
+               </select>
              </div>
 
              {/* Dynamic AI Buttons (Visible when item selected) */}
@@ -236,6 +258,15 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                 <span className="hidden md:inline">{t.aiArchitect}</span>
              </button>
 
+             {/* Finalize Button */}
+             <button 
+                onClick={() => setShowFinalize(true)}
+                className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-700 flex items-center gap-2 transition-colors shadow-sm font-medium ml-1"
+             >
+                <Sparkles size={16} /> 
+                <span className="hidden md:inline">{t.finalize}</span>
+             </button>
+
              <button onClick={() => setShowHelp(true)} className="px-3 py-1 rounded hover:bg-slate-700">{t.help}</button>
           </div>
         </div>
@@ -252,6 +283,15 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         onApplyGraph={onApplyGraphFromAI}
         onApplyChanges={onApplyChangesFromAI}
       />
+      
+      <FinalizationModal
+        isOpen={showFinalize}
+        onClose={() => setShowFinalize(false)}
+        lang={lang}
+        aiMode={appState.aiMode}
+        nodes={nodes}
+        edges={edges}
+      />
 
       <PresentationModal 
         isOpen={presentationMode.isOpen} 
@@ -260,6 +300,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         files={presentationMode.activeFiles}
         targetLanguage={presentationMode.targetLanguage}
         activeItemId={presentationMode.activeItemId}
+        modeTitle={presentationMode.modeTitle}
         nodes={nodes}
         edges={edges}
         uiLang={lang}
@@ -352,6 +393,31 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                          <option value="source-to-target">Source &rarr; Target</option>
                          <option value="target-to-source">Target &rarr; Source</option>
                       </select>
+                    </div>
+                 )}
+
+                 {/* Node Shape Selector */}
+                 {activeNode && (
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">{t.shape}</label>
+                      <div className="grid grid-cols-3 gap-1">
+                        {['sphere', 'box', 'cylinder', 'capsule', 'torus', 'cone'].map((shape) => (
+                           <button
+                             key={shape}
+                             onClick={() => { onPushHistory(); onUpdateItem(activeNode.id, 'node', { shape: shape as NodeShape }) }}
+                             className={`p-1 rounded border flex flex-col items-center justify-center gap-1 text-[10px] ${activeNode.shape === shape || (!activeNode.shape && shape === 'sphere') ? 'bg-blue-100 border-blue-400 text-blue-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                             title={t.shapes[shape as keyof typeof t.shapes]}
+                           >
+                             {shape === 'sphere' && <Circle size={12} />}
+                             {shape === 'box' && <Box size={12} />}
+                             {shape === 'cylinder' && <Cylinder size={12} />}
+                             {shape === 'capsule' && <div className="w-2 h-3 border rounded-full border-current" />}
+                             {shape === 'torus' && <Disc size={12} />}
+                             {shape === 'cone' && <Triangle size={12} />}
+                             <span className="truncate w-full text-center">{t.shapes[shape as keyof typeof t.shapes]}</span>
+                           </button>
+                        ))}
+                      </div>
                     </div>
                  )}
 

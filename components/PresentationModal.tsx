@@ -12,6 +12,7 @@ interface PresentationModalProps {
   files: AttachedFile[];
   targetLanguage: Language;
   activeItemId: string | null;
+  modeTitle?: string;
   nodes: GraphNodeData[];
   edges: GraphEdgeData[];
   onClose: () => void;
@@ -72,7 +73,7 @@ const AIImagePlaceholder: React.FC<{
 };
 
 export const PresentationModal: React.FC<PresentationModalProps> = ({ 
-  isOpen, isLoading, content, files, targetLanguage, activeItemId, nodes, edges, onClose, onRegenerate, uiLang, onAddFile, onRemoveFile 
+  isOpen, isLoading, content, files, targetLanguage, activeItemId, modeTitle, nodes, edges, onClose, onRegenerate, uiLang, onAddFile, onRemoveFile 
 }) => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -159,7 +160,7 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
       <div className="h-16 bg-slate-900 text-white flex items-center justify-between px-6 shadow-md">
         <div className="flex items-center gap-2">
           <Layers className="text-blue-400" />
-          <h1 className="text-xl font-bold">{t.presentationTitle}</h1>
+          <h1 className="text-xl font-bold">{modeTitle || t.presentationTitle}</h1>
         </div>
         
         <div className="flex items-center gap-4">
