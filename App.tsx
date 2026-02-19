@@ -612,11 +612,11 @@ const App: React.FC = () => {
       />
       
       <div className="flex-1 relative mt-12"> 
-        <Canvas shadows camera={{ position: [0, 10, 20], fov: 60 }} onPointerMissed={handleBackgroundClick}>
+        <Canvas camera={{ position: [0, 10, 20], fov: 60 }} onPointerMissed={handleBackgroundClick}>
           <color attach="background" args={['#f0f2f5']} />
           <Suspense fallback={null}>
             <ambientLight intensity={0.6} />
-            <pointLight position={[10, 20, 10]} intensity={0.8} castShadow />
+            <pointLight position={[10, 20, 10]} intensity={0.8} />
             <Grid infiniteGrid fadeDistance={50} sectionColor="#cbd5e1" cellColor="#e2e8f0" />
             <CameraController targetPos={targetCameraPos} />
             <CameraReporter onUpdate={(pos) => setCameraPosDisplay({ x: pos.x, y: pos.y, z: pos.z })} />
