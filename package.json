@@ -9,22 +9,26 @@
   },
   "description": "Professional 3D Graph Visualization Tool",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
     "preview": "vite preview",
     "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on tcp:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
-    "@google/genai": "^0.1.0",
+    "@google/genai": "^2.7.0",
     "@react-three/drei": "^9.0.0",
     "@react-three/fiber": "^8.0.0",
+    "express": "^5.2.1",
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "three": "^0.150.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.1",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
     "@types/three": "^0.150.0",
@@ -33,6 +37,8 @@
     "cross-env": "^7.0.3",
     "electron": "^25.3.0",
     "electron-builder": "^24.6.3",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.22.3",
     "typescript": "^5.0.2",
     "vite": "^4.4.5",
     "wait-on": "^7.0.1"

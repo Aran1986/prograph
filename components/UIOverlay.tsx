@@ -5,7 +5,7 @@ import {
   Settings, Camera, FileJson, MousePointer2,
   Menu, HelpCircle, Eye, Check, X, Layers, FileText, Image as ImageIcon,
   Loader2, Globe, RefreshCw, Cake, Lightbulb, MessageSquare, Send, ArrowRightLeft,
-  Undo2, Redo2, BrainCircuit, Bot, Sparkles, Box, Circle, Triangle, Cylinder, Disc
+  Undo2, Redo2, BrainCircuit, Bot, Sparkles, Box, Circle, Triangle, Database, Disc
 } from 'lucide-react';
 import { AppState, GraphNodeData, GraphEdgeData, UIPanelsState, AttachedFile, Language, ChatMessage, AIMode, NodeShape } from '../types';
 import { translations, getDir } from '../utils/translations';
@@ -407,7 +407,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                            >
                              {shape === 'sphere' && <Circle size={12} />}
                              {shape === 'box' && <Box size={12} />}
-                             {shape === 'cylinder' && <Cylinder size={12} />}
+                             {shape === 'cylinder' && <Database size={12} />}
                              {shape === 'capsule' && <div className="w-2 h-3 border rounded-full border-current" />}
                              {shape === 'torus' && <Disc size={12} />}
                              {shape === 'cone' && <Triangle size={12} />}

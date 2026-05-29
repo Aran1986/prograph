@@ -1,5 +1,6 @@
 {
   "name": "Graph Pro Studio",
   "description": "A professional, modular 3D graph visualization tool. Create nodes, connect edges, and manage knowledge graphs with a spatial interface. Built for React and ready for desktop packaging.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
