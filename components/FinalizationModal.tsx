@@ -85,7 +85,7 @@ export const FinalizationModal: React.FC<FinalizationModalProps> = ({
            {step === 'selection' && (
              <div className="flex flex-col items-center justify-center h-full gap-8 p-8">
                 <h2 className="text-2xl font-bold text-gray-700">{t.finalizeDesc}</h2>
-                <div className="flex gap-6 w-full max-w-2xl">
+                <div className="flex flex-col sm:flex-row gap-6 w-full max-w-2xl">
                    <button 
                      onClick={handleMerge}
                      className="flex-1 bg-white border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 p-8 rounded-xl flex flex-col items-center gap-4 transition-all shadow-sm group"

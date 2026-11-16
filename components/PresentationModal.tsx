@@ -371,7 +371,7 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
                     </div>
                     
                     {/* Draggable Images Sidebar */}
-                    <div className="w-72 bg-gray-50 border-l border-gray-200 p-4 flex flex-col gap-4 overflow-y-auto shrink-0 shadow-inner">
+                    <div className="w-72 bg-gray-50 border-s border-gray-200 p-4 flex flex-col gap-4 overflow-y-auto shrink-0 shadow-inner">
                         <h3 className="font-bold text-gray-700 text-sm flex items-center gap-2 border-b pb-2">
                            <ImagePlus size={16}/> Media Gallery
                         </h3>

@@ -14,7 +14,8 @@ async function startServer() {
     if (typeof handler === 'function') {
       app.post(`/api/ai/${methodName}`, async (req, res) => {
         try {
-          const result = await handler(...req.body.args);
+          const args = Array.isArray(req.body?.args) ? req.body.args : [];
+          const result = await (handler as (...a: any[]) => Promise<any>)(...args);
           res.json({ result });
         } catch (error: any) {
           res.status(500).json({ error: error.message });

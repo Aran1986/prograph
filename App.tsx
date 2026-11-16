@@ -575,7 +575,7 @@ const App: React.FC = () => {
   const handlePointerOut = useCallback(() => { setHoverData(null); }, []);
 
   return (
-    <div className={`w-full h-screen relative bg-gray-50 flex flex-col font-sans`}>
+    <div className="w-full h-screen relative bg-slate-100 overflow-hidden flex flex-col font-sans">
       <UIOverlay 
         appState={appState}
         nodes={nodes}
@@ -611,8 +611,8 @@ const App: React.FC = () => {
         onApplyChangesFromAI={handleApplyChangesFromAI}
       />
       
-      <div className="flex-1 relative mt-12"> 
-        <Canvas camera={{ position: [0, 10, 20], fov: 60 }} onPointerMissed={handleBackgroundClick}>
+      <div className="flex-1 min-h-0 w-full relative pt-12"> 
+        <Canvas className="w-full h-full block" camera={{ position: [0, 10, 20], fov: 60 }} onPointerMissed={handleBackgroundClick}>
           <color attach="background" args={['#f0f2f5']} />
           <Suspense fallback={null}>
             <ambientLight intensity={0.6} />
