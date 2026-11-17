@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, FileText, Sparkles, Copy, Check, Download } from 'lucide-react';
+import { X, Loader2, FileText, Sparkles, Copy, Check, Download, Printer, FileCode, FileDown } from 'lucide-react';
 import { translations, getDir } from '../utils/translations';
 import { Language, AIMode, GraphNodeData, GraphEdgeData } from '../types';
 import { generateFinalProjectArtifact } from '../services/ai';
+import { generateMarkdownDocument, generateMermaidDiagram } from '../utils/graphExport';
 
 interface FinalizationModalProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ export const FinalizationModal: React.FC<FinalizationModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<'selection' | 'result'>('selection');
   const [copied, setCopied] = useState(false);
+  const [copiedMermaid, setCopiedMermaid] = useState(false);
 
   const t = translations[lang];
 
@@ -35,6 +37,7 @@ export const FinalizationModal: React.FC<FinalizationModalProps> = ({
       setStep('selection');
       setResult('');
       setCopied(false);
+      setCopiedMermaid(false);
     }
   }, [isOpen]);
 
@@ -101,10 +104,61 @@ export const FinalizationModal: React.FC<FinalizationModalProps> = ({
   const downloadHtml = () => {
     const doc = `<!DOCTYPE html><html lang="${lang}" dir="${getDir(lang)}"><head><meta charset="UTF-8"><title>${t.finalizeTitle}</title><style>body{font-family:system-ui,-apple-system,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;line-height:1.7;color:#1e293b;}</style></head><body>${result}</body></html>`;
     const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = url;
     a.download = `graph-pro-${aiMode}-${new Date().toISOString().slice(0, 10)}.html`;
     a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const printDocument = () => {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      iframe.remove();
+      return;
+    }
+
+    doc.open();
+    doc.write(`<!DOCTYPE html><html lang="${lang}" dir="${getDir(lang)}"><head><meta charset="UTF-8"><title>${t.finalizeTitle}</title><style>body{font-family:system-ui,-apple-system,sans-serif;max-width:850px;margin:24px auto;padding:0 20px;line-height:1.7;color:#0f172a;}h1,h2,h3{color:#0f172a;}img{max-width:100%;height:auto;}</style></head><body>${result}</body></html>`);
+    doc.close();
+
+    window.setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      window.setTimeout(() => iframe.remove(), 1500);
+    }, 250);
+  };
+
+  const downloadMarkdown = () => {
+    const md = generateMarkdownDocument(nodes, edges, `${t.finalizeTitle} (${t.modes[aiMode]})`, lang);
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `graph-pro-${aiMode}-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const copyMermaid = async () => {
+    const code = generateMermaidDiagram(nodes, edges);
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedMermaid(true);
+      setTimeout(() => setCopiedMermaid(false), 2000);
+    } catch {
+      onNotify(lang === 'fa' ? 'کپی به کلیپ‌بورد امکان‌پذیر نیست.' : 'Unable to copy to clipboard.', 'error');
+    }
   };
 
   return (
@@ -147,6 +201,22 @@ export const FinalizationModal: React.FC<FinalizationModalProps> = ({
                   <span className="font-bold text-lg text-gray-800">{t.aiFinalize}</span>
                 </button>
               </div>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <button
+                  onClick={downloadMarkdown}
+                  className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  <FileDown size={15} className="text-emerald-600" />
+                  <span>{t.exportMarkdown}</span>
+                </button>
+                <button
+                  onClick={copyMermaid}
+                  className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  {copiedMermaid ? <Check size={15} className="text-emerald-600" /> : <FileCode size={15} className="text-blue-600" />}
+                  <span>{copiedMermaid ? t.mermaidCopied : t.copyMermaid}</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -159,12 +229,33 @@ export const FinalizationModal: React.FC<FinalizationModalProps> = ({
                 </div>
               ) : (
                 <>
-                  <div className="bg-gray-100 border-b p-2 flex justify-end gap-2">
+                  <div className="bg-gray-100 border-b p-2 flex flex-wrap justify-end gap-2">
                     <button
                       onClick={() => setStep('selection')}
                       className="px-3 py-1.5 text-xs bg-white border rounded-md hover:bg-gray-50"
                     >
                       {t.undo}
+                    </button>
+                    <button
+                      onClick={downloadMarkdown}
+                      className="px-3 py-1.5 text-xs bg-white border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 flex items-center gap-1"
+                    >
+                      <FileDown size={14} />
+                      {t.exportMarkdown}
+                    </button>
+                    <button
+                      onClick={copyMermaid}
+                      className="px-3 py-1.5 text-xs bg-white border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 flex items-center gap-1"
+                    >
+                      {copiedMermaid ? <Check size={14} className="text-emerald-600" /> : <FileCode size={14} />}
+                      {copiedMermaid ? t.mermaidCopied : t.copyMermaid}
+                    </button>
+                    <button
+                      onClick={printDocument}
+                      className="px-3 py-1.5 text-xs bg-slate-700 text-white rounded-md hover:bg-slate-800 flex items-center gap-1"
+                    >
+                      <Printer size={14} />
+                      {t.printPdf}
                     </button>
                     <button
                       onClick={downloadHtml}
@@ -178,7 +269,7 @@ export const FinalizationModal: React.FC<FinalizationModalProps> = ({
                       className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
                     >
                       {copied ? <Check size={14} /> : <Copy size={14} />}
-                      {copied ? 'Copied' : 'Copy HTML'}
+                      {copied ? t.copied : t.copyHtml}
                     </button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-8 bg-white">

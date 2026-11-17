@@ -6,7 +6,10 @@ import {
   HelpCircle, Eye, X, Layers, FileText, Image as ImageIcon,
   Globe, Cake, Lightbulb, ArrowRightLeft,
   Undo2, Redo2, BrainCircuit, Bot, Sparkles, Box, Circle, Triangle, Database, Disc,
-  AlertCircle, CheckCircle2, Info, Search, FolderOpen, Square, Network
+  AlertCircle, CheckCircle2, Info, Search, FolderOpen, Square, Network, Maximize2, Copy,
+  Crosshair, Download, BarChart2, Filter, FilterX, Tag, Play, GitBranchPlus,
+  Sun, Moon, Maximize, Minimize2, Lock, Unlock, Bookmark, FileCode, LayoutGrid,
+  AlignCenterHorizontal, AlignCenterVertical, Paintbrush, ClipboardPaste, Sliders
 } from 'lucide-react';
 import {
   AppState,
@@ -18,13 +21,18 @@ import {
   AIMode,
   NodeShape,
   AIArchitectDefinitions,
-  ProjectWorkspace
+  ProjectWorkspace,
+  CameraBookmark
 } from '../types';
 import { translations, getDir } from '../utils/translations';
+import { StarterTemplateId } from '../utils/starterTemplates';
+import { AlignMode } from '../utils/graphLayout';
 import { PresentationModal } from './PresentationModal';
 import { AIArchitectModal } from './AIArchitectModal';
 import { FinalizationModal } from './FinalizationModal';
 import { ProjectManagerModal } from './ProjectManagerModal';
+import { GraphAnalyticsModal } from './GraphAnalyticsModal';
+import { ImportGraphModal } from './ImportGraphModal';
 
 interface UIOverlayProps {
   appState: AppState;
@@ -39,8 +47,22 @@ interface UIOverlayProps {
   onToggleBoxSelectMode: () => void;
   snapToGrid: boolean;
   setSnapToGrid: React.Dispatch<React.SetStateAction<boolean>>;
+  focusNeighbors: boolean;
+  setFocusNeighbors: React.Dispatch<React.SetStateAction<boolean>>;
+  activeFilter: { color: string | null; tag: string | null };
+  setActiveFilter: React.Dispatch<React.SetStateAction<{ color: string | null; tag: string | null }>>;
+  hasActivePathHighlight: boolean;
+  onHighlightPath: (nodeIds: string[], edgeIds: string[]) => void;
+  onClearPath: () => void;
+  onScaleByDegree: () => void;
+  onStartTour: () => void;
+  onAddChildNode: (parentId: string) => void;
+  onBatchAddTag: (tag: string) => void;
+  onCaptureScreenshot: () => void;
   onAutoLayout: (kind: 'force' | 'radial') => void;
   onFocusItem: (id: string, type: 'node' | 'edge') => void;
+  onFitView: () => void;
+  onDuplicateSelected: () => void;
   onUpdateItem: (id: string, type: 'node' | 'edge', data: Partial<GraphNodeData | GraphEdgeData>) => void;
   onDeleteItem: () => void;
   onExport: () => void;
@@ -66,6 +88,7 @@ interface UIOverlayProps {
   onSmartGuide: () => void;
   onAddFile: (file: AttachedFile, itemId: string) => void;
   onRemoveFile: (fileId: string, itemId: string) => void;
+  onCreateNodeFromChat: (title: string, content: string, parentItemId?: string | null) => void;
   onUndo: () => void;
   onRedo: () => void;
   canUndo: boolean;
@@ -81,10 +104,30 @@ interface UIOverlayProps {
   projects: ProjectWorkspace[];
   activeProjectId: string;
   onSelectProject: (id: string) => void;
-  onCreateProject: (name: string) => void;
+  onCreateProject: (name: string, templateId?: StarterTemplateId) => void;
   onRenameProject: (id: string, newName: string) => void;
   onDeleteProject: (id: string) => void;
+  onBackupAll: () => void;
+  onRestoreAll: (file: File) => void;
+  sceneTheme: 'light' | 'dark';
+  onToggleTheme: () => void;
+  isZenMode: boolean;
+  onToggleZenMode: () => void;
+  onQuickConnect: (fromId: string, toId: string) => void;
+  cameraBookmarks: CameraBookmark[];
+  onSaveBookmark: (name: string) => void;
+  onLoadBookmark: (bookmark: CameraBookmark) => void;
+  onDeleteBookmark: (id: string) => void;
+  onAlignSelected: (mode: AlignMode) => void;
+  onImportParsedGraph: (nodes: GraphNodeData[], edges: GraphEdgeData[], replace: boolean) => void;
+  showTagZones: boolean;
+  setShowTagZones: React.Dispatch<React.SetStateAction<boolean>>;
+  canPasteStyle: boolean;
+  onCopyStyle: (id: string, type: 'node' | 'edge') => void;
+  onPasteStyle: (id: string, type: 'node' | 'edge') => void;
 }
+
+const COLOR_PRESETS = ['#2563eb', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#64748b'];
 
 const AI_MODES_LIST: AIMode[] = [
   'presentation',
@@ -113,7 +156,7 @@ const Panel: React.FC<{ title: string; icon: React.ReactNode; children: React.Re
 }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   return (
-    <div className={`bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-lg overflow-hidden ${widthClass} transition-all duration-200 pointer-events-auto shrink-0`}>
+    <div className={`bg-white/95 border border-slate-200 rounded-xl shadow-lg overflow-hidden ${widthClass} transition-all duration-200 pointer-events-auto shrink-0`}>
       <div
         className="bg-slate-100/90 px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-slate-200/80 select-none border-b border-slate-200/70"
         onClick={() => setIsOpen(!isOpen)}
@@ -133,26 +176,27 @@ const HelpModal: React.FC<{ onClose: () => void; lang: Language }> = ({ onClose,
   const t = translations[lang];
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" dir={getDir(lang)}>
-      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden">
+      <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full overflow-hidden">
         <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <HelpCircle size={20} /> {t.helpModal.title}
           </h2>
           <button onClick={onClose} className="hover:bg-slate-700 p-1 rounded"><X size={20} /></button>
         </div>
-        <div className="p-6 space-y-4 text-gray-700 text-sm">
+        <div className="p-6 space-y-4 text-gray-700 text-sm max-h-[75vh] overflow-y-auto">
           <div className="space-y-2">
             <h3 className="font-bold border-b pb-1 text-slate-800">{t.helpModal.interaction}</h3>
-            <ul className="list-disc list-inside space-y-1">
+            <ul className="list-disc list-inside space-y-1.5 leading-relaxed">
               <li><span className="font-semibold">{t.helpModal.interactionDesc1}</span></li>
               <li><span className="font-semibold">{t.helpModal.interactionDesc2}</span></li>
             </ul>
           </div>
           <div className="space-y-2">
             <h3 className="font-bold border-b pb-1 text-slate-800">{t.helpModal.manage}</h3>
-            <ul className="list-disc list-inside space-y-1">
+            <ul className="list-disc list-inside space-y-1.5 leading-relaxed">
               <li><span className="font-semibold">{t.helpModal.manageDesc1}</span></li>
               <li><span className="font-semibold">{t.helpModal.manageDesc2}</span></li>
+              <li><span className="font-semibold">{t.helpModal.manageDesc3}</span></li>
             </ul>
           </div>
         </div>
@@ -177,8 +221,22 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
   onToggleBoxSelectMode,
   snapToGrid,
   setSnapToGrid,
+  focusNeighbors,
+  setFocusNeighbors,
+  activeFilter,
+  setActiveFilter,
+  hasActivePathHighlight,
+  onHighlightPath,
+  onClearPath,
+  onScaleByDegree,
+  onStartTour,
+  onAddChildNode,
+  onBatchAddTag,
+  onCaptureScreenshot,
   onAutoLayout,
   onFocusItem,
+  onFitView,
+  onDuplicateSelected,
   onUpdateItem,
   onDeleteItem,
   onExport,
@@ -196,6 +254,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
   onSmartGuide,
   onAddFile,
   onRemoveFile,
+  onCreateNodeFromChat,
   onUndo,
   onRedo,
   canUndo,
@@ -213,15 +272,44 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
   onSelectProject,
   onCreateProject,
   onRenameProject,
-  onDeleteProject
+  onDeleteProject,
+  onBackupAll,
+  onRestoreAll,
+  sceneTheme,
+  onToggleTheme,
+  isZenMode,
+  onToggleZenMode,
+  onQuickConnect,
+  cameraBookmarks,
+  onSaveBookmark,
+  onLoadBookmark,
+  onDeleteBookmark,
+  onAlignSelected,
+  onImportParsedGraph,
+  showTagZones,
+  setShowTagZones,
+  canPasteStyle,
+  onCopyStyle,
+  onPasteStyle
 }) => {
   const [camInput, setCamInput] = useState({ x: 0, y: 10, z: 20 });
+  const [bookmarkName, setBookmarkName] = useState('');
+  const [mobileDrawer, setMobileDrawer] = useState<'none' | 'tools' | 'properties'>('none');
   const [activeMenu, setActiveMenu] = useState<'file' | 'view' | 'lang' | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [showArchitect, setShowArchitect] = useState(false);
   const [showFinalize, setShowFinalize] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showImportText, setShowImportText] = useState(false);
+  const [newTagInput, setNewTagInput] = useState('');
+  const [quickTargetId, setQuickTargetId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchFilter, setSearchFilter] = useState<'all' | 'node' | 'edge'>('all');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
@@ -229,9 +317,32 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
   const t = translations[lang];
 
   useEffect(() => {
-    const handleClickOutside = () => setActiveMenu(null);
+    const handleClickOutside = (e: MouseEvent) => {
+      setActiveMenu(null);
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setIsSearchFocused(false);
+      }
+    };
     window.addEventListener('click', handleClickOutside);
     return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const handleGlobalKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isTyping = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        setIsSearchFocused(true);
+      } else if (!isTyping && e.key === '/') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        setIsSearchFocused(true);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKey);
+    return () => window.removeEventListener('keydown', handleGlobalKey);
   }, []);
 
   const togglePanel = (key: keyof UIPanelsState) => {
@@ -244,22 +355,105 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
   const activeFiles = activeNode?.files || activeEdge?.files || [];
   const activeProject = projects.find((p) => p.id === activeProjectId);
 
+  useEffect(() => {
+    setQuickTargetId('');
+  }, [activeNode?.id]);
+
   const modalActiveFiles =
     nodes.find((n) => n.id === presentationMode.activeItemId)?.files ||
     edges.find((e) => e.id === presentationMode.activeItemId)?.files ||
     presentationMode.activeFiles;
 
+  const connectedItems = useMemo(() => {
+    if (!activeNode || isMultiSelect) return [];
+    return edges
+      .filter((e) => e.fromId === activeNode.id || e.toId === activeNode.id)
+      .map((edge) => {
+        const isOutgoing = edge.fromId === activeNode.id;
+        const neighborId = isOutgoing ? edge.toId : edge.fromId;
+        const neighbor = nodes.find((n) => n.id === neighborId);
+        return neighbor ? { edge, neighbor, isOutgoing } : null;
+      })
+      .filter((item): item is { edge: GraphEdgeData; neighbor: GraphNodeData; isOutgoing: boolean } => item !== null);
+  }, [activeNode, isMultiSelect, edges, nodes]);
+
+  const availableColors = useMemo(() => {
+    return Array.from(new Set(nodes.map((n) => n.color).filter(Boolean)));
+  }, [nodes]);
+
+  const availableTags = useMemo(() => {
+    const set = new Set<string>();
+    nodes.forEach((n) => (n.tags || []).forEach((tag) => set.add(tag)));
+    return Array.from(set).sort();
+  }, [nodes]);
+
+  const handleAddTagToNode = () => {
+    if (!activeNode) return;
+    const cleaned = newTagInput.trim();
+    if (!cleaned) return;
+    const existing = activeNode.tags || [];
+    if (!existing.includes(cleaned)) {
+      onPushHistory();
+      onUpdateItem(activeNode.id, 'node', { tags: [...existing, cleaned] });
+    }
+    setNewTagInput('');
+  };
+
+  const handleRemoveTagFromNode = (tagToRemove: string) => {
+    if (!activeNode) return;
+    onPushHistory();
+    onUpdateItem(activeNode.id, 'node', { tags: (activeNode.tags || []).filter((tg) => tg !== tagToRemove) });
+  };
+
   const searchResults = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
-    const matchedNodes = nodes
-      .filter((n) => n.label.toLowerCase().includes(q) || n.summary.toLowerCase().includes(q))
-      .map((n) => ({ id: n.id, label: n.label, color: n.color, type: 'node' as const }));
-    const matchedEdges = edges
-      .filter((e) => e.label.toLowerCase().includes(q) || e.summary.toLowerCase().includes(q))
-      .map((e) => ({ id: e.id, label: e.label, color: e.color, type: 'edge' as const }));
-    return [...matchedNodes, ...matchedEdges].slice(0, 12);
-  }, [searchQuery, nodes, edges]);
+    const raw = searchQuery.trim().toLowerCase();
+    if (!raw) return [];
+    const tagTerm = raw.startsWith('#') ? raw.slice(1) : raw;
+    const stripHtml = (s: string) => s.replace(/<[^>]+>/g, ' ').toLowerCase();
+
+    const matchedNodes =
+      searchFilter === 'edge'
+        ? []
+        : nodes
+            .filter((n) => {
+              const inLabel = n.label.toLowerCase().includes(raw);
+              const inSummary = (n.summary || '').toLowerCase().includes(raw);
+              const inContent = stripHtml(n.fullContent || '').includes(raw);
+              const inTags = Boolean(tagTerm) && (n.tags || []).some((tg) => tg.toLowerCase().includes(tagTerm));
+              return inLabel || inSummary || inContent || inTags;
+            })
+            .map((n) => ({
+              id: n.id,
+              label: n.label,
+              summary: n.summary || '',
+              color: n.color,
+              tags: n.tags || [],
+              type: 'node' as const
+            }));
+    const matchedEdges =
+      searchFilter === 'node'
+        ? []
+        : edges
+            .filter(
+              (e) =>
+                e.label.toLowerCase().includes(raw) ||
+                (e.summary || '').toLowerCase().includes(raw) ||
+                stripHtml(e.fullContent || '').includes(raw)
+            )
+            .map((e) => ({
+              id: e.id,
+              label: e.label,
+              summary: e.summary || '',
+              color: e.color,
+              tags: [] as string[],
+              type: 'edge' as const
+            }));
+    return [...matchedNodes, ...matchedEdges].slice(0, 20);
+  }, [searchQuery, searchFilter, nodes, edges]);
+
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [searchQuery, searchFilter]);
 
   return (
     <>
@@ -337,6 +531,15 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                   >
                     <Upload size={15} /> {t.load}
                   </button>
+                  <button
+                    className="flex items-center gap-2 px-3.5 py-2.5 hover:bg-blue-50 w-full text-start text-xs font-medium border-t border-slate-100"
+                    onClick={() => {
+                      setShowImportText(true);
+                      setActiveMenu(null);
+                    }}
+                  >
+                    <FileCode size={15} className="text-emerald-600" /> {t.importText}
+                  </button>
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -344,6 +547,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                     accept=".json"
                     onChange={(e) => {
                       if (e.target.files?.[0]) onImport(e.target.files[0]);
+                      e.target.value = '';
                       setActiveMenu(null);
                     }}
                   />
@@ -378,6 +582,10 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                   <label className="flex items-center gap-2 px-2.5 py-2 hover:bg-slate-50 rounded-md cursor-pointer text-xs">
                     <input type="checkbox" checked={uiPanels.hints} onChange={() => togglePanel('hints')} className="rounded text-blue-600" />
                     <span>{t.hintsPanel}</span>
+                  </label>
+                  <label className="flex items-center gap-2 px-2.5 py-2 hover:bg-slate-50 rounded-md cursor-pointer text-xs">
+                    <input type="checkbox" checked={uiPanels.minimap} onChange={() => togglePanel('minimap')} className="rounded text-blue-600" />
+                    <span>{t.minimapPanel}</span>
                   </label>
                 </div>
               )}
@@ -484,14 +692,171 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
             <Sparkles size={15} className="shrink-0" />
             <span className="hidden md:inline">{t.finalize}</span>
           </button>
+
+          <div className="h-5 w-px bg-slate-700 shrink-0 hidden sm:block" />
+
+          <button
+            onClick={onToggleTheme}
+            className="p-1.5 rounded-md hover:bg-slate-800 text-slate-200 transition-colors shrink-0"
+            title={sceneTheme === 'dark' ? t.themeLight : t.themeDark}
+          >
+            {sceneTheme === 'dark' ? <Sun size={15} className="text-amber-400" /> : <Moon size={15} />}
+          </button>
+
+          <button
+            onClick={onToggleZenMode}
+            className={`p-1.5 rounded-md transition-colors shrink-0 ${
+              isZenMode ? 'bg-blue-600 text-white hover:bg-blue-700' : 'hover:bg-slate-800 text-slate-200'
+            }`}
+            title={isZenMode ? t.exitZenMode : t.zenMode}
+          >
+            {isZenMode ? <Minimize2 size={15} /> : <Maximize size={15} />}
+          </button>
         </div>
       </div>
+
+      {/* Floating Quick Search Bar */}
+      {!presentationMode.isOpen && !isZenMode && (
+        <div
+          ref={searchContainerRef}
+          dir={getDir(lang)}
+          onClick={(e) => e.stopPropagation()}
+          className="fixed top-14 left-1/2 -translate-x-1/2 z-[115] w-72 sm:w-88 max-w-[calc(100vw-2rem)] pointer-events-auto"
+        >
+          <div className={`bg-white/95 border rounded-xl shadow-lg transition-all ${isSearchFocused ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-slate-200'}`}>
+            <div className="flex items-center px-3 py-1.5 gap-2">
+              <Search size={15} className="text-slate-400 shrink-0" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onFocus={() => setIsSearchFocused(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setIsSearchFocused(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setSearchQuery('');
+                    setIsSearchFocused(false);
+                    searchInputRef.current?.blur();
+                  } else if (e.key === 'ArrowDown' && searchResults.length > 0) {
+                    e.preventDefault();
+                    setHighlightedIndex((prev) => (prev + 1) % searchResults.length);
+                  } else if (e.key === 'ArrowUp' && searchResults.length > 0) {
+                    e.preventDefault();
+                    setHighlightedIndex((prev) => (prev - 1 + searchResults.length) % searchResults.length);
+                  } else if (e.key === 'Enter' && searchResults[highlightedIndex]) {
+                    e.preventDefault();
+                    const picked = searchResults[highlightedIndex];
+                    onFocusItem(picked.id, picked.type);
+                    setIsSearchFocused(false);
+                  }
+                }}
+                placeholder={t.searchNode}
+                className="flex-1 min-w-0 bg-transparent text-xs md:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
+              />
+              {searchQuery ? (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    searchInputRef.current?.focus();
+                  }}
+                  className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
+                >
+                  <X size={14} />
+                </button>
+              ) : (
+                <kbd dir="ltr" className="hidden sm:inline-block text-[10px] text-slate-400 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 font-mono">
+                  Ctrl+K
+                </kbd>
+              )}
+            </div>
+
+            {isSearchFocused && searchQuery.trim() !== '' && (
+              <div className="border-t border-slate-100">
+                <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-50/80 border-b border-slate-100 gap-1">
+                  <div className="flex items-center gap-1">
+                    {(['all', 'node', 'edge'] as const).map((filterKey) => (
+                      <button
+                        key={filterKey}
+                        onClick={() => setSearchFilter(filterKey)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                          searchFilter === filterKey
+                            ? 'bg-blue-600 text-white'
+                            : 'text-slate-600 hover:bg-slate-200/70'
+                        }`}
+                      >
+                        {filterKey === 'all' ? t.searchAll : filterKey === 'node' ? t.searchNodes : t.searchEdges}
+                      </button>
+                    ))}
+                  </div>
+                  {searchResults.filter((r) => r.type === 'node').length > 1 && (
+                    <button
+                      onClick={() => {
+                        const nodeIds = searchResults.filter((r) => r.type === 'node').map((r) => r.id);
+                        setAppState((prev) => ({ ...prev, selectedIds: nodeIds, activeType: 'node', mode: 'select' }));
+                        setIsSearchFocused(false);
+                      }}
+                      className="text-[11px] text-blue-600 hover:text-blue-700 font-medium px-1.5 py-0.5 rounded hover:bg-blue-50"
+                    >
+                      {t.selectMatches}
+                    </button>
+                  )}
+                </div>
+
+                <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
+                  {searchResults.length === 0 ? (
+                    <div className="p-3 text-xs text-slate-400 text-center">{t.noResults}</div>
+                  ) : (
+                    searchResults.map((item, idx) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          onFocusItem(item.id, item.type);
+                          setIsSearchFocused(false);
+                        }}
+                        onMouseEnter={() => setHighlightedIndex(idx)}
+                        className={`w-full px-3 py-2 text-start flex items-start gap-2.5 transition-colors ${
+                          idx === highlightedIndex ? 'bg-blue-50' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1" style={{ backgroundColor: item.color }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-xs font-bold text-slate-800">{item.label}</span>
+                            <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded uppercase shrink-0">
+                              {item.type === 'node' ? t.searchNodes : t.searchEdges}
+                            </span>
+                          </div>
+                          {item.summary && (
+                            <p className="text-[11px] text-slate-500 truncate mt-0.5">{item.summary}</p>
+                          )}
+                          {item.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {item.tags.slice(0, 4).map((tg) => (
+                                <span key={tg} className="text-[9px] bg-blue-50 text-blue-700 border border-blue-100 px-1 rounded">
+                                  #{tg}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification Banner */}
       {toast && (
         <div
           dir={getDir(lang)}
-          className={`fixed top-14 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-2.5 px-4 py-2.5 rounded-xl shadow-xl border text-xs md:text-sm font-medium max-w-md ${
+          className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-2.5 px-4 py-2.5 rounded-xl shadow-xl border text-xs md:text-sm font-medium max-w-md ${
             toast.type === 'error'
               ? 'bg-red-50 text-red-800 border-red-200'
               : toast.type === 'success'
@@ -521,6 +886,8 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         onCreateProject={onCreateProject}
         onRenameProject={onRenameProject}
         onDeleteProject={onDeleteProject}
+        onBackupAll={onBackupAll}
+        onRestoreAll={onRestoreAll}
       />
 
       <AIArchitectModal
@@ -562,56 +929,37 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         onSaveContent={onSavePresentationContent}
         onAddFile={onAddFile}
         onRemoveFile={onRemoveFile}
+        onCreateNodeFromChat={onCreateNodeFromChat}
         onNotify={onNotify}
       />
 
+      <GraphAnalyticsModal
+        isOpen={showAnalytics}
+        onClose={() => setShowAnalytics(false)}
+        lang={lang}
+        nodes={nodes}
+        edges={edges}
+        selectedNodeIds={appState.activeType === 'node' ? appState.selectedIds : []}
+        hasActivePathHighlight={hasActivePathHighlight}
+        onHighlightPath={onHighlightPath}
+        onClearPath={onClearPath}
+        onFocusItem={onFocusItem}
+        onScaleByDegree={onScaleByDegree}
+      />
+
+      <ImportGraphModal
+        isOpen={showImportText}
+        onClose={() => setShowImportText(false)}
+        lang={lang}
+        onApplyImport={onImportParsedGraph}
+      />
+
       {/* Sidebar Container: Tools & Camera */}
-      <div className={`absolute top-16 ${lang === 'fa' ? 'right-3 md:right-4' : 'left-3 md:left-4'} z-10 flex flex-col gap-3 max-h-[calc(100vh-5rem)] overflow-y-auto pointer-events-none`}>
+      {!isZenMode && (
+      <div className={`absolute top-16 ${lang === 'fa' ? 'right-3 md:right-4' : 'left-3 md:left-4'} z-10 ${mobileDrawer === 'tools' ? 'flex' : 'hidden md:flex'} flex-col gap-3 max-h-[calc(100vh-8.5rem)] md:max-h-[calc(100vh-5rem)] overflow-y-auto pointer-events-none`}>
         {uiPanels.tools && (
           <Panel title={t.toolTitle} icon={<Settings size={15} />} widthClass="w-56">
             <div className="flex flex-col gap-2">
-              {/* Search Nodes & Edges */}
-              <div className="relative">
-                <Search size={13} className={`absolute top-2.5 ${lang === 'fa' ? 'right-2.5' : 'left-2.5'} text-slate-400 pointer-events-none`} />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t.searchNode}
-                  className={`w-full border border-slate-200 rounded-lg py-1.5 ${lang === 'fa' ? 'pr-7 pl-6' : 'pl-7 pr-6'} text-xs bg-slate-50 focus:bg-white focus:outline-blue-500`}
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className={`absolute top-2 ${lang === 'fa' ? 'left-2' : 'right-2'} text-slate-400 hover:text-slate-600`}
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-
-              {searchQuery.trim() && (
-                <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg bg-white divide-y divide-slate-100">
-                  {searchResults.length === 0 ? (
-                    <div className="p-2 text-[11px] text-slate-400 text-center">{t.noResults}</div>
-                  ) : (
-                    searchResults.map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          onFocusItem(item.id, item.type);
-                          setSearchQuery('');
-                        }}
-                        className="w-full px-2.5 py-1.5 text-start hover:bg-blue-50 flex items-center gap-2 text-xs"
-                      >
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                        <span className="truncate flex-1 text-slate-700 font-medium">{item.label}</span>
-                        <span className="text-[10px] text-slate-400 uppercase shrink-0">{item.type}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
 
               <button onClick={onAddNode} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-lg justify-center font-medium transition-colors shadow-sm">
                 <Plus size={16} />
@@ -687,6 +1035,131 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                   className="rounded text-blue-600 cursor-pointer"
                 />
               </label>
+
+              {/* Focus Connected & Tag Zones */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={() => setFocusNeighbors((prev) => !prev)}
+                  className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-md text-[11px] font-medium border transition-colors ${
+                    focusNeighbors
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  <Crosshair size={12} />
+                  <span className="truncate">{t.focusNeighbors}</span>
+                </button>
+                <button
+                  onClick={() => setShowTagZones((prev) => !prev)}
+                  className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-md text-[11px] font-medium border transition-colors ${
+                    showTagZones
+                      ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+                      : 'bg-slate-50 hover:bg-teal-50 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  <Layers size={12} />
+                  <span className="truncate">{t.showTagZones}</span>
+                </button>
+              </div>
+
+              {/* Import Text / Mermaid */}
+              <button
+                onClick={() => setShowImportText(true)}
+                className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium border bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 border-slate-200 transition-colors"
+              >
+                <FileCode size={12} />
+                <span className="truncate">{t.importText}</span>
+              </button>
+
+              {/* Analytics & Path Finder + 3D Tour */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowAnalytics(true)}
+                    className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-md text-[11px] font-medium border transition-colors ${
+                      hasActivePathHighlight
+                        ? 'bg-amber-50 text-amber-800 border-amber-300'
+                        : 'bg-slate-50 hover:bg-blue-50 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    <BarChart2 size={12} />
+                    <span className="truncate">{t.analytics}</span>
+                  </button>
+                  {hasActivePathHighlight && (
+                    <button
+                      onClick={onClearPath}
+                      className="p-1.5 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300"
+                      title={t.clearPath}
+                    >
+                      <X size={11} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={onStartTour}
+                  disabled={nodes.length === 0}
+                  className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-md text-[11px] font-medium border bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 border-slate-200 disabled:opacity-40 transition-colors"
+                >
+                  <Play size={11} />
+                  <span className="truncate">{t.tourStart}</span>
+                </button>
+              </div>
+
+              {/* Visual Color & Tag Filter */}
+              {(availableColors.length > 1 || availableTags.length > 0 || activeFilter.color || activeFilter.tag) && (
+                <div className="pt-1.5 border-t border-slate-100 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <Filter size={11} /> {t.filterTitle}
+                    </span>
+                    {(activeFilter.color || activeFilter.tag) && (
+                      <button
+                        onClick={() => setActiveFilter({ color: null, tag: null })}
+                        className="text-[10px] text-blue-600 hover:text-blue-700 flex items-center gap-0.5"
+                        title={t.clearFilters}
+                      >
+                        <FilterX size={11} />
+                      </button>
+                    )}
+                  </div>
+                  {availableColors.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {availableColors.slice(0, 10).map((col) => {
+                        const isActive = activeFilter.color === col;
+                        return (
+                          <button
+                            key={col}
+                            onClick={() => setActiveFilter((prev) => ({ ...prev, color: isActive ? null : col }))}
+                            className={`w-4 h-4 rounded-full border transition-transform ${
+                              isActive ? 'ring-2 ring-blue-500 ring-offset-1 scale-110 border-white' : 'border-slate-300 hover:scale-110'
+                            }`}
+                            style={{ backgroundColor: col }}
+                            title={col}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                  {availableTags.length > 0 && (
+                    <select
+                      value={activeFilter.tag || ''}
+                      onChange={(e) => setActiveFilter((prev) => ({ ...prev, tag: e.target.value || null }))}
+                      className="w-full border border-slate-200 rounded-md px-1.5 py-1 text-[11px] bg-slate-50 text-slate-700 focus:outline-blue-500"
+                    >
+                      <option value="">{t.allTags}</option>
+                      {availableTags.map((tg) => (
+                        <option key={tg} value={tg}>
+                          #{tg}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-1 border-t border-slate-100 text-[10px] text-slate-400 text-center tabular-nums">
+                {nodes.length} {t.nodesCount} · {edges.length} {t.edgesCount}
+              </div>
             </div>
           </Panel>
         )}
@@ -716,58 +1189,286 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                 onChange={(e) => setCamInput({ ...camInput, z: parseFloat(e.target.value) || 0 })}
               />
             </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={() => onCameraTeleport(camInput.x, camInput.y, camInput.z)}
+                className="bg-slate-700 hover:bg-slate-800 text-white py-1.5 px-2 rounded-md text-xs flex items-center justify-center gap-1 transition-colors font-medium"
+              >
+                <MapPin size={13} /> {t.jump}
+              </button>
+              <button
+                onClick={onFitView}
+                className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 py-1.5 px-2 rounded-md text-xs flex items-center justify-center gap-1 transition-colors font-medium"
+              >
+                <Maximize2 size={12} /> {t.fitView}
+              </button>
+            </div>
             <button
-              onClick={() => onCameraTeleport(camInput.x, camInput.y, camInput.z)}
-              className="w-full bg-slate-700 hover:bg-slate-800 text-white py-1.5 px-2 rounded-md text-xs flex items-center justify-center gap-1.5 transition-colors font-medium"
+              onClick={onCaptureScreenshot}
+              className="mt-1.5 w-full bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 py-1.5 px-2 rounded-md text-[11px] flex items-center justify-center gap-1.5 transition-colors font-medium"
             >
-              <MapPin size={13} /> {t.jump}
+              <Download size={12} /> {t.screenshot}
             </button>
-            <div dir="ltr" className="mt-2 text-center text-[11px] text-slate-500 font-mono">
+            <div dir="ltr" className="mt-2 text-center text-[11px] text-slate-500 font-mono tabular-nums">
               Pos: {Math.round(cameraPos.x)}, {Math.round(cameraPos.y)}, {Math.round(cameraPos.z)}
+            </div>
+
+            {/* Saved Camera Bookmarks */}
+            <div className="mt-2.5 pt-2 border-t border-slate-100 space-y-1.5">
+              <div className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
+                <Bookmark size={11} className="text-blue-600" />
+                <span>{t.cameraBookmarks}</span>
+              </div>
+              <div className="flex gap-1">
+                <input
+                  type="text"
+                  value={bookmarkName}
+                  onChange={(e) => setBookmarkName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && bookmarkName.trim()) {
+                      e.preventDefault();
+                      onSaveBookmark(bookmarkName.trim());
+                      setBookmarkName('');
+                    }
+                  }}
+                  placeholder={t.bookmarkNamePlaceholder}
+                  className="flex-1 min-w-0 border border-slate-200 rounded px-2 py-1 text-[11px] bg-slate-50 focus:bg-white focus:outline-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const fallback = `${t.saveView} ${cameraBookmarks.length + 1}`;
+                    onSaveBookmark(bookmarkName.trim() || fallback);
+                    setBookmarkName('');
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-[11px] font-medium shrink-0"
+                  title={t.saveView}
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+              {cameraBookmarks.length === 0 ? (
+                <div className="text-[10px] text-slate-400 text-center py-0.5">{t.noBookmarks}</div>
+              ) : (
+                <div className="flex flex-col gap-1 max-h-28 overflow-y-auto">
+                  {cameraBookmarks.map((bm) => (
+                    <div
+                      key={bm.id}
+                      className="flex items-center justify-between gap-1 bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[11px]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onLoadBookmark(bm)}
+                        className="flex-1 min-w-0 text-start truncate font-medium text-slate-700 hover:text-blue-600 transition-colors"
+                      >
+                        {bm.name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteBookmark(bm.id)}
+                        className="text-slate-400 hover:text-red-600 p-0.5 shrink-0"
+                      >
+                        <X size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </Panel>
         )}
       </div>
+      )}
 
       {/* Sidebar: Properties */}
-      {uiPanels.properties && (
-        <div className={`absolute top-16 ${lang === 'fa' ? 'left-3 md:left-4' : 'right-3 md:right-4'} z-10 flex flex-col max-h-[calc(100vh-5rem)] overflow-y-auto pointer-events-none`}>
+      {!isZenMode && uiPanels.properties && (
+        <div className={`absolute top-16 ${lang === 'fa' ? 'left-3 md:left-4' : 'right-3 md:right-4'} z-10 ${mobileDrawer === 'properties' ? 'flex' : 'hidden md:flex'} flex-col max-h-[calc(100vh-8.5rem)] md:max-h-[calc(100vh-5rem)] overflow-y-auto pointer-events-none`}>
           <Panel title={t.propTitle} icon={<MousePointer2 size={15} />} widthClass="w-64">
             {(activeNode || activeEdge) && (
               <div className="flex flex-col gap-3">
                 {isMultiSelect && (
-                  <div className="bg-blue-50 border border-blue-100 p-2 rounded-lg text-blue-800 text-xs font-bold flex items-center gap-2">
-                    <Layers size={14} />
-                    <span>
-                      {appState.selectedIds.length} {t.multiSelect}
-                    </span>
+                  <div className="bg-blue-50 border border-blue-100 p-2 rounded-lg text-blue-800 text-xs flex flex-col gap-1">
+                    <div className="font-bold flex items-center gap-2">
+                      <Layers size={14} />
+                      <span>
+                        {appState.selectedIds.length} {t.multiSelect}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-blue-700/90 leading-relaxed">{t.multiSelectNote}</p>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1.5">
+                  {!isMultiSelect && (
+                    <button
+                      onClick={onSelectSameColor}
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 p-1.5 rounded-lg text-xs font-medium transition-colors"
+                    >
+                      <Eye size={13} /> <span>{t.selectSimilar}</span>
+                    </button>
+                  )}
+                  {appState.activeType === 'node' && (
+                    <button
+                      onClick={onDuplicateSelected}
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 p-1.5 rounded-lg text-xs font-medium transition-colors"
+                      title="Ctrl+D"
+                    >
+                      <Copy size={13} /> <span>{t.duplicate}</span>
+                    </button>
+                  )}
+                </div>
+
+                {(activeNode || activeEdge) && (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {!isMultiSelect && (
+                      <button
+                        type="button"
+                        onClick={() => onCopyStyle(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge')}
+                        className="flex items-center justify-center gap-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 p-1.5 rounded-lg text-[11px] font-medium transition-colors"
+                      >
+                        <Paintbrush size={12} />
+                        <span className="truncate">{t.copyStyle}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={!canPasteStyle}
+                      onClick={() => onPasteStyle(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge')}
+                      className={`${isMultiSelect ? 'col-span-2' : ''} flex items-center justify-center gap-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 disabled:opacity-40 disabled:pointer-events-none p-1.5 rounded-lg text-[11px] font-medium transition-colors`}
+                    >
+                      <ClipboardPaste size={12} />
+                      <span className="truncate">{t.pasteStyle}</span>
+                    </button>
+                  </div>
+                )}
+
+                {activeNode && !isMultiSelect && (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => onAddChildNode(activeNode.id)}
+                      className="flex items-center justify-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 p-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+                    >
+                      <GitBranchPlus size={13} />
+                      <span className="truncate">{t.addChildNode}</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        onPushHistory();
+                        onUpdateItem(activeNode.id, 'node', { locked: !activeNode.locked });
+                      }}
+                      className={`flex items-center justify-center gap-1 border p-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                        activeNode.locked
+                          ? 'bg-amber-100 hover:bg-amber-200 text-amber-800 border-amber-300'
+                          : 'bg-slate-50 hover:bg-amber-50 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      {activeNode.locked ? <Unlock size={12} /> : <Lock size={12} />}
+                      <span className="truncate">{activeNode.locked ? t.unlockNode : t.lockNode}</span>
+                    </button>
+                  </div>
+                )}
+
+                {isMultiSelect && appState.activeType === 'node' && (
+                  <div className="bg-slate-50 p-2 rounded border border-slate-200 space-y-2">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                        <LayoutGrid size={11} className="text-indigo-600" /> {t.alignArrange}
+                      </label>
+                      <div className="grid grid-cols-3 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onAlignSelected('y')}
+                          className="bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 rounded py-1 px-1 text-[10px] font-medium flex items-center justify-center gap-0.5"
+                        >
+                          <AlignCenterVertical size={10} /> {t.alignY}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onAlignSelected('x')}
+                          className="bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 rounded py-1 px-1 text-[10px] font-medium flex items-center justify-center gap-0.5"
+                        >
+                          <AlignCenterHorizontal size={10} /> {t.alignX}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onAlignSelected('z')}
+                          className="bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 rounded py-1 px-1 text-[10px] font-medium flex items-center justify-center gap-0.5"
+                        >
+                          <AlignCenterHorizontal size={10} /> {t.alignZ}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onAlignSelected('grid')}
+                          className="bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 rounded py-1 px-1.5 text-[10px] font-medium flex items-center justify-center gap-1"
+                        >
+                          <LayoutGrid size={10} /> {t.arrangeGrid}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onAlignSelected('circle')}
+                          className="bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 rounded py-1 px-1.5 text-[10px] font-medium flex items-center justify-center gap-1"
+                        >
+                          <Circle size={10} /> {t.arrangeCircle}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-1.5 border-t border-slate-200 space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                        <Tag size={11} className="text-blue-600" /> {t.batchAddTag}
+                      </label>
+                      <div className="flex gap-1">
+                        <input
+                          type="text"
+                          value={newTagInput}
+                          onChange={(e) => setNewTagInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (newTagInput.trim()) {
+                                onBatchAddTag(newTagInput);
+                                setNewTagInput('');
+                              }
+                            }
+                          }}
+                          placeholder={t.addTagPlaceholder}
+                          className="flex-1 min-w-0 border border-slate-200 rounded px-2 py-1 text-xs bg-white focus:outline-blue-500"
+                        />
+                        <button
+                          onClick={() => {
+                            if (newTagInput.trim()) {
+                              onBatchAddTag(newTagInput);
+                              setNewTagInput('');
+                            }
+                          }}
+                          className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 rounded text-xs font-bold"
+                        >
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
                 {!isMultiSelect && (
-                  <button
-                    onClick={onSelectSameColor}
-                    className="flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 p-1.5 rounded-lg text-xs font-medium transition-colors"
-                  >
-                    <Eye size={14} /> <span>{t.selectSimilar}</span>
-                  </button>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 block mb-1">{t.label}</label>
+                    <input
+                      type="text"
+                      className="w-full border border-slate-200 rounded-md px-2 py-1.5 text-sm bg-slate-50 focus:bg-white focus:outline-blue-500 transition-colors"
+                      value={activeNode?.label ?? activeEdge?.label ?? ''}
+                      onFocus={onPushHistory}
+                      onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { label: e.target.value })}
+                    />
+                  </div>
                 )}
 
-                <div>
-                  <label className="text-xs font-medium text-slate-600 block mb-1">{t.label}</label>
-                  <input
-                    type="text"
-                    className="w-full border border-slate-200 rounded-md px-2 py-1.5 text-sm bg-slate-50 focus:bg-white focus:outline-blue-500 transition-colors"
-                    value={activeNode?.label ?? activeEdge?.label ?? ''}
-                    onFocus={onPushHistory}
-                    onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { label: e.target.value })}
-                  />
-                </div>
-
-                {activeEdge && (
+                {activeEdge && !isMultiSelect && (
                   <div className="bg-orange-50 p-2 rounded border border-orange-100">
                     <label className="text-xs text-orange-800 block mb-1 font-bold flex items-center gap-1">
-                      <ArrowRightLeft size={10} /> Flow Direction
+                      <ArrowRightLeft size={10} /> {t.edgeDirection}
                     </label>
                     <select
                       className="w-full text-xs p-1 rounded border border-orange-200 bg-white"
@@ -775,9 +1476,9 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                       onFocus={onPushHistory}
                       onChange={(e) => onUpdateItem(activeEdge.id, 'edge', { direction: e.target.value as any })}
                     >
-                      <option value="bidirectional">Bidirectional (Mutual)</option>
-                      <option value="source-to-target">Source &rarr; Target</option>
-                      <option value="target-to-source">Target &rarr; Source</option>
+                      <option value="bidirectional">{t.dirBidirectional}</option>
+                      <option value="source-to-target">{t.dirSourceToTarget}</option>
+                      <option value="target-to-source">{t.dirTargetToSource}</option>
                     </select>
                   </div>
                 )}
@@ -831,7 +1532,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
 
                 <div>
                   <label className="text-xs font-medium text-slate-600 block mb-1">{t.color}</label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 mb-1.5">
                     <input
                       type="color"
                       className="w-8 h-8 cursor-pointer rounded border border-slate-300 p-0 overflow-hidden shrink-0"
@@ -843,70 +1544,254 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                       {activeNode?.color ?? activeEdge?.color}
                     </div>
                   </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {COLOR_PRESETS.map((hex) => {
+                      const currentHex = (activeNode?.color ?? activeEdge?.color ?? '').toLowerCase();
+                      const isMatch = currentHex === hex.toLowerCase();
+                      return (
+                        <button
+                          key={hex}
+                          type="button"
+                          onClick={() => {
+                            onPushHistory();
+                            onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { color: hex });
+                          }}
+                          className={`w-5 h-5 rounded-full border transition-transform ${
+                            isMatch ? 'ring-2 ring-blue-500 ring-offset-1 scale-110 border-white' : 'border-slate-300 hover:scale-110'
+                          }`}
+                          style={{ backgroundColor: hex }}
+                          title={hex}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <hr className="border-gray-200" />
-
-                <div className="bg-slate-50 p-2 rounded border border-slate-200">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-bold text-slate-600">{t.files}</span>
-                    <button onClick={() => attachmentInputRef.current?.click()} className="text-xs bg-slate-200 hover:bg-slate-300 p-1 rounded">
-                      <Plus size={14} />
-                    </button>
-                    <input
-                      type="file"
-                      ref={attachmentInputRef}
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files?.[0]) onFileUpload(e.target.files[0]);
-                      }}
-                    />
-                  </div>
-                  {activeFiles.length === 0 ? (
-                    <div className="text-xs text-gray-400 text-center py-2">{t.noFiles}</div>
-                  ) : (
-                    <div className="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1">
-                      {activeFiles.map((file) => (
-                        <div key={file.id} className="flex justify-between items-center bg-white border p-1 rounded text-xs">
-                          <div className="flex items-center gap-1 overflow-hidden">
-                            {file.type.startsWith('image') ? (
-                              <ImageIcon size={10} className="text-blue-500 shrink-0" />
-                            ) : (
-                              <FileText size={10} className="text-gray-500 shrink-0" />
-                            )}
-                            {file.isAiGenerated && <span className="text-[9px] bg-purple-100 text-purple-700 px-1 rounded shrink-0">AI</span>}
-                            <span className="truncate max-w-[120px]">{file.name}</span>
-                          </div>
-                          <button onClick={() => onDeleteFile(file.id)} className="text-red-500 hover:bg-red-50 p-0.5 rounded shrink-0">
-                            <X size={12} />
-                          </button>
+                {activeNode && !isMultiSelect && (
+                  <div className="bg-slate-50 p-2 rounded border border-slate-200 space-y-1.5">
+                    <label className="text-[11px] font-semibold text-slate-600 block">{t.positionXYZ}</label>
+                    <div className="grid grid-cols-3 gap-1.5" dir="ltr">
+                      {(['X', 'Y', 'Z'] as const).map((axis, idx) => (
+                        <div key={axis} className="flex flex-col gap-0.5">
+                          <span className="text-[9px] text-slate-400 font-mono text-center">{axis}</span>
+                          <input
+                            type="number"
+                            step="0.5"
+                            disabled={Boolean(activeNode.locked)}
+                            value={Math.round(activeNode.position[idx] * 100) / 100}
+                            onFocus={onPushHistory}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              if (Number.isNaN(val)) return;
+                              const nextPos: [number, number, number] = [...activeNode.position] as [number, number, number];
+                              nextPos[idx] = val;
+                              onUpdateItem(activeNode.id, 'node', { position: nextPos });
+                            }}
+                            className="w-full min-w-0 border border-slate-200 rounded px-1 py-1 text-[11px] text-center bg-white disabled:bg-slate-100 disabled:text-slate-400 focus:outline-blue-500 tabular-nums"
+                          />
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                <hr className="border-gray-200" />
+                {activeNode && !isMultiSelect && (
+                  <div className="bg-slate-50 p-2 rounded border border-slate-200 space-y-1.5">
+                    <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
+                      <Tag size={12} className="text-blue-600" /> {t.tags}
+                    </label>
+                    {(activeNode.tags || []).length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {(activeNode.tags || []).map((tg) => (
+                          <span
+                            key={tg}
+                            className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded text-[11px] font-medium"
+                          >
+                            <span>#{tg}</span>
+                            <button
+                              onClick={() => handleRemoveTagFromNode(tg)}
+                              className="hover:text-red-600"
+                            >
+                              <X size={10} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-1">
+                      <input
+                        type="text"
+                        value={newTagInput}
+                        onChange={(e) => setNewTagInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddTagToNode();
+                          }
+                        }}
+                        placeholder={t.addTagPlaceholder}
+                        className="flex-1 min-w-0 border border-slate-200 rounded px-2 py-1 text-xs bg-white focus:outline-blue-500"
+                      />
+                      <button
+                        onClick={handleAddTagToNode}
+                        className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 rounded text-xs font-bold"
+                      >
+                        <Plus size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">{t.summary}</label>
-                  <textarea
-                    className="w-full border rounded p-1.5 text-sm h-16 bg-gray-50 focus:bg-white transition-colors"
-                    value={activeNode?.summary || activeEdge?.summary || ''}
-                    onFocus={onPushHistory}
-                    onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { summary: e.target.value })}
-                  />
-                </div>
+                {!isMultiSelect && (
+                  <>
+                    <hr className="border-gray-200" />
 
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">{t.fullContent}</label>
-                  <textarea
-                    className="w-full border rounded p-1.5 text-sm h-24 bg-gray-50 focus:bg-white transition-colors"
-                    value={activeNode?.fullContent || activeEdge?.fullContent || ''}
-                    onFocus={onPushHistory}
-                    onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { fullContent: e.target.value })}
-                  />
-                </div>
+                    <div className="bg-slate-50 p-2 rounded border border-slate-200">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-bold text-slate-600">{t.files}</span>
+                        <button onClick={() => attachmentInputRef.current?.click()} className="text-xs bg-slate-200 hover:bg-slate-300 p-1 rounded">
+                          <Plus size={14} />
+                        </button>
+                        <input
+                          type="file"
+                          ref={attachmentInputRef}
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) onFileUpload(e.target.files[0]);
+                            e.target.value = '';
+                          }}
+                        />
+                      </div>
+                      {activeFiles.length === 0 ? (
+                        <div className="text-xs text-gray-400 text-center py-2">{t.noFiles}</div>
+                      ) : (
+                        <div className="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1">
+                          {activeFiles.map((file) => (
+                            <div key={file.id} className="flex justify-between items-center bg-white border p-1 rounded text-xs">
+                              <div className="flex items-center gap-1 overflow-hidden">
+                                {file.type.startsWith('image') ? (
+                                  <ImageIcon size={10} className="text-blue-500 shrink-0" />
+                                ) : (
+                                  <FileText size={10} className="text-gray-500 shrink-0" />
+                                )}
+                                {file.isAiGenerated && <span className="text-[9px] bg-purple-100 text-purple-700 px-1 rounded shrink-0">AI</span>}
+                                <span className="truncate max-w-[120px]">{file.name}</span>
+                              </div>
+                              <button onClick={() => onDeleteFile(file.id)} className="text-red-500 hover:bg-red-50 p-0.5 rounded shrink-0">
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {activeNode && (
+                      <>
+                        <hr className="border-gray-200" />
+                        <div className="bg-slate-50 p-2 rounded border border-slate-200">
+                          <div className="flex justify-between items-center mb-1.5">
+                            <span className="text-xs font-bold text-slate-600">{t.connectedItems}</span>
+                            <span className="text-[10px] font-mono bg-white border border-slate-200 text-slate-500 px-1.5 py-0.5 rounded tabular-nums">
+                              {connectedItems.length}
+                            </span>
+                          </div>
+                          {connectedItems.length === 0 ? (
+                            <div className="text-[11px] text-slate-400 text-center py-1.5">{t.noConnections}</div>
+                          ) : (
+                            <div className="flex flex-col gap-1 max-h-36 overflow-y-auto pr-0.5">
+                              {connectedItems.map(({ edge, neighbor, isOutgoing }) => (
+                                <div
+                                  key={edge.id}
+                                  className="flex items-center justify-between gap-1.5 bg-white border border-slate-200 rounded px-2 py-1 text-[11px]"
+                                >
+                                  <button
+                                    onClick={() => onFocusItem(neighbor.id, 'node')}
+                                    className="flex items-center gap-1.5 min-w-0 flex-1 text-start hover:text-blue-600 transition-colors"
+                                    title={neighbor.label}
+                                  >
+                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: neighbor.color }} />
+                                    <span className="text-slate-400 shrink-0 font-mono">
+                                      {edge.direction === 'bidirectional' ? '↔' : isOutgoing ? '→' : '←'}
+                                    </span>
+                                    <span className="truncate font-medium text-slate-700">{neighbor.label}</span>
+                                  </button>
+                                  {edge.label && (
+                                    <button
+                                      onClick={() => onFocusItem(edge.id, 'edge')}
+                                      className="text-[10px] text-slate-500 hover:text-orange-600 bg-slate-100 hover:bg-orange-50 px-1.5 py-0.5 rounded truncate max-w-[75px] shrink-0"
+                                      title={edge.label}
+                                    >
+                                      {edge.label}
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {nodes.length > 1 && (
+                            <div className="mt-2 pt-2 border-t border-slate-200/80 space-y-1">
+                              <label className="text-[10px] font-semibold text-slate-500 block">{t.quickConnect}</label>
+                              <div className="flex gap-1">
+                                <select
+                                  value={quickTargetId}
+                                  onChange={(e) => setQuickTargetId(e.target.value)}
+                                  className="flex-1 min-w-0 border border-slate-200 rounded px-1.5 py-1 text-[11px] bg-white text-slate-700 focus:outline-blue-500"
+                                >
+                                  <option value="">{t.selectTargetNode}</option>
+                                  {nodes
+                                    .filter((n) => n.id !== activeNode.id)
+                                    .map((n) => (
+                                      <option key={n.id} value={n.id}>
+                                        {n.label}
+                                      </option>
+                                    ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  disabled={!quickTargetId}
+                                  onClick={() => {
+                                    if (quickTargetId) {
+                                      onQuickConnect(activeNode.id, quickTargetId);
+                                      setQuickTargetId('');
+                                    }
+                                  }}
+                                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-2 py-1 rounded text-[11px] font-medium shrink-0"
+                                  title={t.connectAction}
+                                >
+                                  <LinkIcon size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    <hr className="border-gray-200" />
+
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">{t.summary}</label>
+                      <textarea
+                        className="w-full border rounded p-1.5 text-sm h-16 bg-gray-50 focus:bg-white transition-colors"
+                        value={activeNode?.summary || activeEdge?.summary || ''}
+                        onFocus={onPushHistory}
+                        onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { summary: e.target.value })}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">{t.fullContent}</label>
+                      <textarea
+                        className="w-full border rounded p-1.5 text-sm h-24 bg-gray-50 focus:bg-white transition-colors"
+                        value={activeNode?.fullContent || activeEdge?.fullContent || ''}
+                        onFocus={onPushHistory}
+                        onChange={(e) => onUpdateItem(activeNode?.id || activeEdge!.id, activeNode ? 'node' : 'edge', { fullContent: e.target.value })}
+                      />
+                    </div>
+                  </>
+                )}
 
                 <button
                   onClick={onDeleteItem}
@@ -927,7 +1812,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
       {/* Tooltip & Hints */}
       {hoverInfo && !presentationMode.isOpen && (
         <div
-          className="fixed z-30 pointer-events-none bg-slate-900/95 backdrop-blur text-white p-4 rounded-xl shadow-2xl border border-slate-700 max-w-sm transition-opacity left-1/2 -translate-x-1/2 bottom-12"
+          className="fixed z-30 pointer-events-none bg-slate-900/95 text-white p-4 rounded-xl shadow-2xl border border-slate-700 max-w-sm transition-opacity left-1/2 -translate-x-1/2 bottom-12"
           dir={getDir(lang)}
         >
           <div className="font-bold text-lg mb-1.5 text-blue-300">{hoverInfo.label}</div>
@@ -936,9 +1821,50 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         </div>
       )}
 
-      {uiPanels.hints && (
-        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 text-xs text-slate-600 pointer-events-none bg-white/85 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm z-10 whitespace-nowrap">
-          {t.hints}
+      {!isZenMode && uiPanels.hints && (
+        <div className="hidden md:block fixed bottom-3 left-1/2 -translate-x-1/2 text-xs text-slate-600 pointer-events-none bg-white/95 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm z-10 whitespace-nowrap">
+          {t.hints} • {t.doubleClickHint}
+        </div>
+      )}
+
+      {/* Mobile Compact Drawer Switcher */}
+      {!isZenMode && !presentationMode.isOpen && (
+        <div
+          className="md:hidden fixed bottom-3 left-3 z-20 flex items-center gap-1.5 bg-slate-900/95 text-white p-1.5 rounded-xl border border-slate-700 shadow-xl pointer-events-auto"
+          dir={getDir(lang)}
+        >
+          <button
+            type="button"
+            onClick={() => setMobileDrawer((prev) => (prev === 'tools' ? 'none' : 'tools'))}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              mobileDrawer === 'tools' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 text-slate-200'
+            }`}
+          >
+            <Settings size={14} />
+            <span>{t.toolTitle}</span>
+          </button>
+          {uiPanels.properties && (
+            <button
+              type="button"
+              onClick={() => setMobileDrawer((prev) => (prev === 'properties' ? 'none' : 'properties'))}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                mobileDrawer === 'properties' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 text-slate-200'
+              }`}
+            >
+              <Sliders size={14} />
+              <span>{t.propTitle}</span>
+            </button>
+          )}
+          {mobileDrawer !== 'none' && (
+            <button
+              type="button"
+              onClick={() => setMobileDrawer('none')}
+              className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300"
+              title={t.close}
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
       )}
     </>

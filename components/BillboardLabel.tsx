@@ -9,6 +9,7 @@ interface BillboardLabelProps {
   bgColor?: string;
   borderColor?: string;
   scaleFactor?: number;
+  opacity?: number;
 }
 
 export const BillboardLabel: React.FC<BillboardLabelProps> = ({
@@ -19,6 +20,7 @@ export const BillboardLabel: React.FC<BillboardLabelProps> = ({
   bgColor = 'rgba(255, 255, 255, 0.9)',
   borderColor = 'rgba(148, 163, 184, 0.7)',
   scaleFactor = 0.0085,
+  opacity = 1,
 }) => {
   const { texture, width, height } = useMemo(() => {
     const label = (text || '').trim();
@@ -96,7 +98,7 @@ export const BillboardLabel: React.FC<BillboardLabelProps> = ({
 
   return (
     <sprite position={position} scale={[width, height, 1]}>
-      <spriteMaterial map={texture} transparent depthTest={false} />
+      <spriteMaterial map={texture} transparent opacity={opacity} depthTest={false} />
     </sprite>
   );
 };

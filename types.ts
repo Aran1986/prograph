@@ -39,6 +39,8 @@ export interface GraphNodeData {
   position: [number, number, number];
   files: AttachedFile[];
   shape?: NodeShape;
+  tags?: string[];
+  locked?: boolean;
 }
 
 export type EdgeDirection = 'bidirectional' | 'source-to-target' | 'target-to-source';
@@ -80,7 +82,8 @@ export interface UIPanelsState {
   properties: boolean;
   camera: boolean;
   hints: boolean;
-  filePanel: boolean; 
+  filePanel: boolean;
+  minimap: boolean;
 }
 
 export interface ChatMessage {
@@ -105,6 +108,13 @@ export interface AISuggestion {
   status: 'pending' | 'accepted' | 'rejected';
 }
 
+export interface CameraBookmark {
+  id: string;
+  name: string;
+  position: [number, number, number];
+  lookAt: [number, number, number];
+}
+
 export interface ProjectWorkspace {
   id: string;
   name: string;
@@ -112,4 +122,5 @@ export interface ProjectWorkspace {
   nodes: GraphNodeData[];
   edges: GraphEdgeData[];
   architectDefs: AIArchitectDefinitions;
+  cameraBookmarks?: CameraBookmark[];
 }

@@ -37,8 +37,10 @@ export const AIArchitectModal: React.FC<AIArchitectModalProps> = ({
   const [feedback, setFeedback] = useState('');
 
   const t = translations[lang].architect;
+  const uiT = translations[lang];
   const dir = getDir(lang);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const filesInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -138,6 +140,34 @@ export const AIArchitectModal: React.FC<AIArchitectModalProps> = ({
     setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
   };
 
+  const handleAcceptAll = () => {
+    const newNodes: any[] = [];
+    const newEdges: any[] = [];
+    const modifiedNodes: { id: string; nodeLabel: string; content: string }[] = [];
+    const deleteNodeIds: string[] = [];
+    const deleteEdgeIds: string[] = [];
+
+    suggestions.forEach((s) => {
+      if (s.type === 'add_node' && s.data) newNodes.push(s.data);
+      else if (s.type === 'add_edge' && s.data) newEdges.push(s.data);
+      else if (s.type === 'modify_content' && s.data) {
+        const matchedNode = nodes.find((n) => n.label.toLowerCase() === String(s.data.nodeLabel || '').toLowerCase());
+        if (matchedNode) {
+          modifiedNodes.push({ id: matchedNode.id, nodeLabel: matchedNode.label, content: s.data.newFullContent || '' });
+        }
+      } else if (s.type === 'delete_item' && s.data) {
+        const matchedNode = nodes.find((n) => n.label.toLowerCase() === String(s.data.nodeLabel || s.data.label || '').toLowerCase());
+        const matchedEdge = edges.find((e) => e.label.toLowerCase() === String(s.data.label || '').toLowerCase());
+        if (matchedNode) deleteNodeIds.push(matchedNode.id);
+        if (matchedEdge) deleteEdgeIds.push(matchedEdge.id);
+      }
+    });
+
+    onApplyChanges({ newNodes, newEdges, modifiedNodes, deleteNodeIds, deleteEdgeIds });
+    setSuggestions([]);
+    onNotify(lang === 'fa' ? 'همه پیشنهادها روی گراف اعمال شدند.' : 'All suggestions applied to graph.', 'success');
+  };
+
   return (
     <div className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" dir={dir}>
       <div className="bg-white w-full max-w-4xl h-[82vh] rounded-xl shadow-2xl flex flex-col overflow-hidden">
@@ -222,21 +252,42 @@ export const AIArchitectModal: React.FC<AIArchitectModalProps> = ({
           {/* TAB 2: UPLOAD */}
           {activeTab === 2 && (
             <div className="flex flex-col items-center justify-center min-h-full space-y-6">
-              <div
-                className="border-2 border-dashed border-gray-300 rounded-xl p-10 w-full max-w-xl flex flex-col items-center justify-center bg-gray-50 hover:bg-purple-50 transition-colors cursor-pointer"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <FolderOpen size={48} className="text-purple-400 mb-4" />
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 w-full max-w-xl flex flex-col items-center justify-center bg-gray-50">
+                <FolderOpen size={44} className="text-purple-400 mb-3" />
                 <h3 className="text-lg font-bold text-gray-700">{t.uploadLabel}</h3>
-                <p className="text-sm text-gray-500 text-center mt-2">{t.uploadNote}</p>
+                <p className="text-sm text-gray-500 text-center mt-1 mb-5">{t.uploadNote}</p>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => folderInputRef.current?.click()}
+                    className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    {uiT.selectFolder}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => filesInputRef.current?.click()}
+                    className="bg-white hover:bg-purple-50 text-purple-700 border border-purple-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    {uiT.selectFiles}
+                  </button>
+                </div>
                 <input
                   type="file"
-                  ref={fileInputRef}
+                  ref={folderInputRef}
                   className="hidden"
                   // @ts-ignore
                   webkitdirectory=""
                   directory=""
                   multiple
+                  onChange={handleFolderUpload}
+                />
+                <input
+                  type="file"
+                  ref={filesInputRef}
+                  className="hidden"
+                  multiple
+                  accept=".txt,.md,.json,.js,.ts,.tsx,.jsx,.py,.java,.cs,.css,.html,.csv,text/*"
                   onChange={handleFolderUpload}
                 />
               </div>
@@ -312,6 +363,17 @@ export const AIArchitectModal: React.FC<AIArchitectModalProps> = ({
               </div>
 
               {/* Suggestions List */}
+              {suggestions.length > 1 && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleAcceptAll}
+                    className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
+                  >
+                    <Check size={14} /> {uiT.acceptAll}
+                  </button>
+                </div>
+              )}
+
               <div className="flex-1 overflow-y-auto space-y-3">
                 {suggestions.map((s) => (
                   <div key={s.id} className="border rounded-lg p-4 bg-white shadow-sm flex justify-between items-start gap-4 hover:shadow-md transition-shadow">
@@ -333,7 +395,7 @@ export const AIArchitectModal: React.FC<AIArchitectModalProps> = ({
                   </div>
                 ))}
                 {suggestions.length === 0 && !isProcessing && (
-                  <div className="text-center text-gray-400 mt-10 italic">Ready for brainstorming...</div>
+                  <div className="text-center text-gray-400 mt-10 italic">{uiT.readyBrainstorm}</div>
                 )}
               </div>
             </div>
