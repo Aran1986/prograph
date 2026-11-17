@@ -91,8 +91,8 @@ export const translations = {
       interactionDesc1: 'دابل کلیک: باز شدن پنجره اختصاصی مود',
       interactionDesc2: 'آپلود: از پنل تنظیمات',
       manage: 'مدیریت',
-      manageDesc1: 'کلیک: انتخاب',
-      manageDesc2: 'درگ: انتخاب چندتایی',
+      manageDesc1: 'کلیک: انتخاب • Shift+کلیک: انتخاب چندتایی',
+      manageDesc2: 'درگ روی نود: جابه‌جایی • چرخ ماوس: بزرگنمایی',
       btn: 'باشه'
     },
     architect: {
@@ -118,7 +118,23 @@ export const translations = {
       reject: 'رد',
       shadowCopyNote: 'تغییرات در نسخه سایه ذخیره می‌شوند.',
       feedbackPlace: 'توضیحات...'
-    }
+    },
+    autoLayout: 'چیدمان خودکار',
+    forceLayout: 'فیزیکی (Force)',
+    radialLayout: 'دایره‌ای (Radial)',
+    boxSelect: 'انتخاب کادری',
+    boxSelectActive: 'روی فضا درگ کنید',
+    snapToGrid: 'چسبیدن به شبکه',
+    searchNode: 'جست‌وجوی نود یا یال...',
+    noResults: 'موردی یافت نشد',
+    projects: 'پروژه‌ها',
+    manageProjects: 'مدیریت پروژه‌ها',
+    newProject: 'پروژه جدید',
+    projectName: 'نام پروژه',
+    create: 'ایجاد',
+    rename: 'تغییر نام',
+    active: 'فعال',
+    defaultProjectName: 'پروژه اصلی'
   },
   en: {
     title: 'GraphPro',
@@ -210,8 +226,8 @@ export const translations = {
       interactionDesc1: 'Double Click: Opens Mode-Specific Modal',
       interactionDesc2: 'Upload: Via Properties Panel',
       manage: 'Manage',
-      manageDesc1: 'Click: Select',
-      manageDesc2: 'Drag: Multi-select',
+      manageDesc1: 'Click: Select • Shift+Click: Multi-select',
+      manageDesc2: 'Drag node: Move • Scroll: Zoom',
       btn: 'OK'
     },
     architect: {
@@ -237,7 +253,23 @@ export const translations = {
       reject: 'Reject',
       shadowCopyNote: 'Changes saved as shadow copies.',
       feedbackPlace: 'Feedback...'
-    }
+    },
+    autoLayout: 'Auto Layout',
+    forceLayout: 'Force Layout',
+    radialLayout: 'Radial Layout',
+    boxSelect: 'Box Select',
+    boxSelectActive: 'Drag to select nodes',
+    snapToGrid: 'Snap to Grid',
+    searchNode: 'Search nodes or edges...',
+    noResults: 'No matching items',
+    projects: 'Projects',
+    manageProjects: 'Manage Projects',
+    newProject: 'New Project',
+    projectName: 'Project Name',
+    create: 'Create',
+    rename: 'Rename',
+    active: 'Active',
+    defaultProjectName: 'Default Project'
   }
 };
 

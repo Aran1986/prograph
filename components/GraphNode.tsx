@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { ThreeEvent, useThree } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { GraphNodeData } from '../types';
+import { BillboardLabel } from './BillboardLabel';
 
 interface GraphNodeProps {
   data: GraphNodeData;
@@ -13,7 +13,7 @@ interface GraphNodeProps {
   onPointerOver: (e: ThreeEvent<PointerEvent>, data: GraphNodeData) => void;
   onPointerOut: (e: ThreeEvent<PointerEvent>) => void;
   onDrag: (id: string, newPos: [number, number, number]) => void;
-  onDragStart?: () => void; // Added for undo/redo
+  onDragStart?: () => void;
   isDraggingEnabled: boolean;
 }
 
@@ -31,21 +31,19 @@ export const GraphNode: React.FC<GraphNodeProps> = ({
 }) => {
   const { camera } = useThree();
   const [dragging, setDragging] = useState(false);
-  
-  // Use a ref for the drag plane to avoid re-renders during drag
+
   const dragPlaneRef = useRef(new THREE.Plane());
-  const planeIntersectPoint = new THREE.Vector3();
+  const planeIntersectPoint = useRef(new THREE.Vector3());
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (!isDraggingEnabled) return;
     e.stopPropagation();
-    
-    // Only allow left click drag (button 0)
+
     if (e.button === 0) {
-      if (onDragStart) onDragStart(); // Trigger history save
+      if (onDragStart) onDragStart();
       setDragging(true);
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      
+
       const viewDir = new THREE.Vector3();
       camera.getWorldDirection(viewDir);
       dragPlaneRef.current.setFromNormalAndCoplanarPoint(viewDir, new THREE.Vector3(...data.position));
@@ -62,10 +60,9 @@ export const GraphNode: React.FC<GraphNodeProps> = ({
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     if (dragging && isDraggingEnabled) {
       e.stopPropagation();
-      e.ray.intersectPlane(dragPlaneRef.current, planeIntersectPoint);
-      
-      if (planeIntersectPoint) {
-        onDrag(data.id, [planeIntersectPoint.x, planeIntersectPoint.y, planeIntersectPoint.z]);
+      const hit = e.ray.intersectPlane(dragPlaneRef.current, planeIntersectPoint.current);
+      if (hit) {
+        onDrag(data.id, [hit.x, hit.y, hit.z]);
       }
     }
   };
@@ -107,18 +104,13 @@ export const GraphNode: React.FC<GraphNodeProps> = ({
           metalness={0.2}
         />
       </mesh>
-      
-      <Text
-        position={[0, 1.2 * data.size, 0]}
-        fontSize={0.5}
-        color="black"
-        anchorX="center"
-        anchorY="middle"
-        outlineWidth={0.02}
-        outlineColor="white"
-      >
-        {data.label}
-      </Text>
+
+      <BillboardLabel
+        text={data.label}
+        position={[0, 1.25 * data.size, 0]}
+        bgColor={isSelected ? 'rgba(239, 246, 255, 0.96)' : 'rgba(255, 255, 255, 0.9)'}
+        borderColor={isSelected ? 'rgba(37, 99, 235, 0.9)' : 'rgba(148, 163, 184, 0.7)'}
+      />
     </group>
   );
 };

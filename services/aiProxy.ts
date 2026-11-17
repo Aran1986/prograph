@@ -1,29 +1,62 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { GraphNodeData, GraphEdgeData, Language, ChatMessage, AIArchitectDefinitions, AISuggestion, AttachedFile, AIMode } from "../types";
+import {
+  GraphNodeData,
+  GraphEdgeData,
+  Language,
+  ChatMessage,
+  AIArchitectDefinitions,
+  AISuggestion,
+  AttachedFile,
+  AIMode
+} from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-const textModel = 'gemini-3-flash-preview';
-const reasoningModel = 'gemini-3-pro-preview'; 
+const getClient = () => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured. Please set it in Settings > Secrets.");
+  }
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build"
+      }
+    }
+  });
+};
+
+const textModel = "gemini-4-hydrogen";
+const reasoningModel = "gemini-4-hydrogen";
+const imageModel = "gemini-2.5-flash-image";
 
 // --- Helpers ---
 
-const decodeFileContent = (base64Content: string) => {
+const decodeFileContent = (base64Content: string): string => {
   try {
-    return atob(base64Content.split(',')[1]);
+    const base64Part = base64Content.includes(",") ? base64Content.split(",")[1] : base64Content;
+    if (!base64Part) return "";
+    return Buffer.from(base64Part, "base64").toString("utf-8");
   } catch (e) {
     return "[Error decoding file]";
   }
+};
+
+const stripCodeFences = (raw: string): string => {
+  return raw
+    .replace(/^```(?:html|json|markdown|md)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
 };
 
 const getFileParts = (files: any[]) => {
   const parts: any[] = [];
   let descriptions = "";
   let fullTextContext = "";
-  
+
   if (files && files.length > 0) {
     files.forEach((file, index) => {
-      if (file.type.startsWith('image/')) {
-        const base64Data = file.content.split(',')[1];
+      if (file.type?.startsWith("image/")) {
+        const base64Data = file.content.includes(",") ? file.content.split(",")[1] : file.content;
         if (base64Data) {
           parts.push({
             inlineData: {
@@ -33,11 +66,11 @@ const getFileParts = (files: any[]) => {
           });
           descriptions += `Image #${index + 1} ID: "${file.id}" (Filename: ${file.name})\n`;
         }
-      } else if (file.type.startsWith('text/')) {
-         const textContent = decodeFileContent(file.content);
-         const textPart = `\n\n--- START OF FILE: ${file.name} ---\n${textContent}\n--- END OF FILE ---\n`;
-         parts.push({ text: textPart });
-         fullTextContext += textPart;
+      } else if (file.type?.startsWith("text/") || file.name?.match(/\.(txt|md|json|js|ts|tsx|jsx|py|css|html|csv)$/i)) {
+        const textContent = decodeFileContent(file.content);
+        const textPart = `\n\n--- START OF FILE: ${file.name} ---\n${textContent}\n--- END OF FILE ---\n`;
+        parts.push({ text: textPart });
+        fullTextContext += textPart;
       }
     });
   }
@@ -47,63 +80,65 @@ const getFileParts = (files: any[]) => {
 const getDeepGlobalContext = (nodes: GraphNodeData[], edges: GraphEdgeData[]) => {
   let context = "GLOBAL KNOWLEDGE GRAPH (RAG DATA):\n\n";
 
-  nodes.forEach(n => {
-    context += `NODE [${n.label}]:\n`;
+  nodes.forEach((n) => {
+    context += `NODE [ID=${n.id}] "${n.label}":\n`;
     context += `Summary: ${n.summary}\n`;
     context += `Full Content: ${n.fullContent}\n`;
-    
+
     if (n.files && n.files.length > 0) {
       context += "ATTACHED DOCUMENTS:\n";
-      n.files.forEach(f => {
-        if (f.type.startsWith('text/')) {
-           context += `File: ${f.name}\nContent: ${decodeFileContent(f.content).substring(0, 2000)}...\n`; 
+      n.files.forEach((f) => {
+        if (f.type?.startsWith("text/")) {
+          context += `File: ${f.name}\nContent: ${decodeFileContent(f.content).substring(0, 2000)}\n`;
         }
       });
     }
     context += "--------------------------------------------------\n";
   });
 
-  edges.forEach(e => {
-     const from = nodes.find(n => n.id === e.fromId)?.label;
-     const to = nodes.find(n => n.id === e.toId)?.label;
-     let dirText = "Bidirectional connection";
-     if (e.direction === 'source-to-target') dirText = `${from} --> ${to}`;
-     else if (e.direction === 'target-to-source') dirText = `${to} --> ${from}`;
+  edges.forEach((e) => {
+    const from = nodes.find((n) => n.id === e.fromId)?.label || e.fromId;
+    const to = nodes.find((n) => n.id === e.toId)?.label || e.toId;
+    let dirText = `${from} <--> ${to}`;
+    if (e.direction === "source-to-target") dirText = `${from} --> ${to}`;
+    else if (e.direction === "target-to-source") dirText = `${to} --> ${from}`;
 
-     context += `EDGE [${e.label}] from ${from} to ${to}\n`;
-     context += `Direction: ${dirText}\n`;
-     context += `Summary: ${e.summary}\n`;
-     context += "--------------------------------------------------\n";
+    context += `EDGE "${e.label}" (${dirText})\n`;
+    context += `Summary: ${e.summary}\n`;
+    if (e.fullContent) context += `Content: ${e.fullContent}\n`;
+    context += "--------------------------------------------------\n";
   });
 
   return context;
 };
 
+const formatDefsContext = (defs?: AIArchitectDefinitions) => {
+  if (!defs) return "";
+  const lines: string[] = [];
+  if (defs.nodeDefinition?.trim()) lines.push(`Node Definition: ${defs.nodeDefinition.trim()}`);
+  if (defs.edgeDefinition?.trim()) lines.push(`Edge Definition: ${defs.edgeDefinition.trim()}`);
+  if (defs.projectGoals?.trim()) lines.push(`Project Goals: ${defs.projectGoals.trim()}`);
+  return lines.length > 0 ? `PROJECT ARCHITECTURE DEFINITIONS:\n${lines.join("\n")}\n\n` : "";
+};
+
 // --- Image Generation ---
 
 export const generateImage = async (prompt: string): Promise<string | null> => {
-  try {
-    // Using gemini-2.5-flash-image which supports image generation via generateContent
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image', 
-      contents: { parts: [{ text: prompt }] }
-    });
+  const ai = getClient();
+  const response = await ai.models.generateContent({
+    model: imageModel,
+    contents: { parts: [{ text: prompt }] }
+  });
 
-    if (response.candidates && response.candidates.length > 0) {
-      const parts = response.candidates[0].content?.parts;
-      if (parts) {
-        for (const part of parts) {
-          if (part.inlineData && part.inlineData.data) {
-            return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-          }
-        }
+  const parts = response.candidates?.[0]?.content?.parts;
+  if (parts) {
+    for (const part of parts) {
+      if (part.inlineData?.data) {
+        return `data:${part.inlineData.mimeType || "image/png"};base64,${part.inlineData.data}`;
       }
     }
-    return null;
-  } catch (e) {
-    console.error("Image gen error:", e);
-    return null;
   }
+  throw new Error("No image was generated by the model.");
 };
 
 // --- Multi-Mode Content Generation ---
@@ -113,112 +148,109 @@ export const generateModeContent = async (
   mode: AIMode,
   targetLanguage: Language
 ): Promise<string> => {
-  try {
-    const langName = targetLanguage === 'fa' ? 'Persian (Farsi)' : 'English';
-    const direction = targetLanguage === 'fa' ? 'rtl' : 'ltr';
-    const { parts, descriptions } = getFileParts(item.files);
+  const ai = getClient();
+  const langName = targetLanguage === "fa" ? "Persian (Farsi)" : "English";
+  const direction = targetLanguage === "fa" ? "rtl" : "ltr";
+  const { parts, descriptions } = getFileParts(item.files);
 
-    let systemRole = "";
-    let instructions = "";
+  let systemRole = "";
+  let instructions = "";
 
-    switch (mode) {
-      case 'presentation':
-        systemRole = "You are a Business Presentation Expert.";
-        instructions = "Create a slide content for this entity. Include bullet points, key takeaways, and a professional tone.";
-        break;
-      case 'writing':
-        systemRole = "You are a Novelist and Creative Writer.";
-        instructions = "Analyze this node as a Story Element (Character, Place, Event). Write a Character Sheet or Scene Description. Focus on narrative depth, emotion, and sensory details.";
-        break;
-      case 'coding':
-        systemRole = "You are a Senior Software Engineer.";
-        instructions = "Treat this node as a Code Module or System Component. Provide Technical Documentation, Interface Definitions (TypeScript/Python), and usage examples.";
-        break;
-      case 'law':
-        systemRole = "You are a Senior Legal Counsel.";
-        instructions = "Treat this as a Legal Case, Contract Clause, or Evidence. Provide a Legal Analysis, Compliance Check, and potential risks.";
-        break;
-      case 'chemistry':
-        systemRole = "You are a Chemistry Professor.";
-        instructions = "Analyze this as a Chemical Element, Compound, or Reaction. Provide scientific properties, safety data, and molecular structure description.";
-        break;
-      case 'investigation':
-        systemRole = "You are a Private Investigator / Detective.";
-        instructions = "Analyze this node as a Suspect, Clue, or Timeline Event. Create an Investigative Report. Focus on motives, alibis, and connections to other crimes.";
-        break;
-      case 'journalism':
-        systemRole = "You are an Investigative Journalist.";
-        instructions = "Treat this as a News Story lead or Interview Subject. Draft a News Report or Article. Focus on the 5 Ws (Who, What, Where, When, Why) and objective reporting.";
-        break;
-      case 'genealogy':
-        systemRole = "You are a Professional Genealogist.";
-        instructions = "Analyze this node as a Family Member or Historical Record. Create a Biographical Entry. Focus on dates, relationships, lineage, and historical context.";
-        break;
-      case 'network':
-        systemRole = "You are a Network Engineer.";
-        instructions = "Treat this as a Network Device (Router, Switch, Server) or Subnet. Provide a Network Topology configuration, IP scheme, or security policy for this node.";
-        break;
-      case 'supplyChain':
-        systemRole = "You are a Supply Chain Manager.";
-        instructions = "Analyze this as a Logistics Node (Warehouse, Supplier, Transport). Provide a Logistics Report, Inventory Status, or Efficiency Analysis.";
-        break;
-      case 'seo':
-        systemRole = "You are an SEO Strategist.";
-        instructions = "Treat this as a Web Page or Keyword Cluster. Provide an SEO Audit, Keyword Strategy, and Content Optimization suggestions.";
-        break;
-      case 'financial':
-        systemRole = "You are a Forensic Accountant.";
-        instructions = "Analyze this as a Transaction, Account, or Entity. Provide a Financial Audit Report. Trace funds, identify irregularities, and summarize financial health.";
-        break;
-      case 'pkm':
-        systemRole = "You are a Knowledge Management Expert.";
-        instructions = "Treat this as a Zettelkasten Note or Knowledge Atom. connect it to broader concepts. Summarize key insights and 'atomic' ideas.";
-        break;
-      case 'mindMap':
-        systemRole = "You are a Brainstorming Facilitator.";
-        instructions = "Treat this as a Central Idea or Branch. Expand on it with related sub-concepts, creative associations, and lateral thinking ideas.";
-        break;
-      case 'gameDesign':
-        systemRole = "You are a Lead Game Designer.";
-        instructions = "Analyze this as a Game Mechanic, Level, or NPC. Write a Design Document (GDD) section. Focus on gameplay loops, player experience, and balance.";
-        break;
-      default:
-        systemRole = "You are an AI Assistant.";
-        instructions = "Provide a detailed summary and analysis of this item.";
-    }
-
-    const promptText = `
-      ${systemRole}
-      Output Language: ${langName}.
-      
-      Target Entity: ${item.label}
-      Summary: ${item.summary}
-      Full Content: ${item.fullContent}
-      
-      Attached Context (Images/Files):
-      ${descriptions}
-
-      TASK:
-      ${instructions}
-
-      FORMATTING:
-      - Clean HTML with inline CSS. Direction: ${direction}.
-      - Use <img src="FILE_ID" class="ai-embedded-img" style="max-width:100%; border-radius:8px; margin: 10px 0;" /> for provided images.
-      - If visual concepts are described but no image exists, use <ai-image-gen prompt="..."></ai-image-gen>.
-    `;
-
-    parts.unshift({ text: promptText });
-
-    const response = await ai.models.generateContent({
-      model: textModel,
-      contents: { parts: parts }
-    });
-
-    return response.text || "<h2>Error generating content</h2>";
-
-  } catch (e) {
-    return `<div style="color:red">Error: ${e instanceof Error ? e.message : 'Unknown'}</div>`;
+  switch (mode) {
+    case "presentation":
+      systemRole = "You are a Business Presentation Expert.";
+      instructions = "Create structured slide content for this entity. Include clear headings, bullet points, key takeaways, and a professional tone.";
+      break;
+    case "writing":
+      systemRole = "You are a Novelist and Creative Writer.";
+      instructions = "Analyze this node as a Story Element (Character, Place, Event). Write a Character Sheet or Scene Description focusing on narrative depth, emotion, and sensory details.";
+      break;
+    case "coding":
+      systemRole = "You are a Senior Software Engineer.";
+      instructions = "Treat this node as a Code Module or System Component. Provide Technical Documentation, Interface Definitions (TypeScript/Python), and usage examples.";
+      break;
+    case "law":
+      systemRole = "You are a Senior Legal Counsel.";
+      instructions = "Treat this as a Legal Case, Contract Clause, or Evidence. Provide a Legal Analysis, Compliance Check, and potential risks.";
+      break;
+    case "chemistry":
+      systemRole = "You are a Chemistry Professor.";
+      instructions = "Analyze this as a Chemical Element, Compound, or Reaction. Provide scientific properties, safety data, and molecular structure description.";
+      break;
+    case "investigation":
+      systemRole = "You are a Private Investigator / Detective.";
+      instructions = "Analyze this node as a Suspect, Clue, or Timeline Event. Create an Investigative Report focusing on motives, alibis, and connections.";
+      break;
+    case "journalism":
+      systemRole = "You are an Investigative Journalist.";
+      instructions = "Treat this as a News Story lead or Interview Subject. Draft a News Report or Article focusing on the 5 Ws (Who, What, Where, When, Why).";
+      break;
+    case "genealogy":
+      systemRole = "You are a Professional Genealogist.";
+      instructions = "Analyze this node as a Family Member or Historical Record. Create a Biographical Entry focusing on dates, relationships, lineage, and historical context.";
+      break;
+    case "network":
+      systemRole = "You are a Network Engineer.";
+      instructions = "Treat this as a Network Device (Router, Switch, Server) or Subnet. Provide a Network Topology configuration, IP scheme, or security policy.";
+      break;
+    case "supplyChain":
+      systemRole = "You are a Supply Chain Manager.";
+      instructions = "Analyze this as a Logistics Node (Warehouse, Supplier, Transport). Provide a Logistics Report, Inventory Status, and Bottleneck Analysis.";
+      break;
+    case "seo":
+      systemRole = "You are an SEO Strategist.";
+      instructions = "Treat this as a Web Page or Keyword Cluster. Provide an SEO Audit, Keyword Strategy, and Content Optimization suggestions.";
+      break;
+    case "financial":
+      systemRole = "You are a Forensic Accountant.";
+      instructions = "Analyze this as a Transaction, Account, or Entity. Provide a Financial Audit Report tracing funds, irregularities, and financial health.";
+      break;
+    case "pkm":
+      systemRole = "You are a Knowledge Management Expert.";
+      instructions = "Treat this as a Zettelkasten Note or Knowledge Atom. Summarize key insights, atomic ideas, and connections to broader concepts.";
+      break;
+    case "mindMap":
+      systemRole = "You are a Brainstorming Facilitator.";
+      instructions = "Treat this as a Central Idea or Branch. Expand on it with related sub-concepts, creative associations, and lateral thinking ideas.";
+      break;
+    case "gameDesign":
+      systemRole = "You are a Lead Game Designer.";
+      instructions = "Analyze this as a Game Mechanic, Level, or NPC. Write a Design Document (GDD) section focusing on gameplay loops, player experience, and balance.";
+      break;
+    default:
+      systemRole = "You are an AI Assistant.";
+      instructions = "Provide a detailed summary and analysis of this item.";
   }
+
+  const promptText = `
+    ${systemRole}
+    Output Language: ${langName}.
+
+    Target Entity: ${item.label}
+    Summary: ${item.summary}
+    Full Content: ${item.fullContent}
+
+    Attached Context (Images/Files):
+    ${descriptions}
+
+    TASK:
+    ${instructions}
+
+    FORMATTING:
+    - Return ONLY clean HTML fragment (no markdown code fences, no <html>/<body> wrappers).
+    - Direction: ${direction}.
+    - Use <img src="FILE_ID" class="ai-embedded-img" style="max-width:100%; border-radius:8px; margin: 10px 0;" /> for provided images.
+    - If visual concepts are described but no image exists, use <ai-image-gen prompt="..."></ai-image-gen>.
+  `;
+
+  parts.unshift({ text: promptText });
+
+  const response = await ai.models.generateContent({
+    model: textModel,
+    contents: { parts }
+  });
+
+  return stripCodeFences(response.text || "<p>No content generated.</p>");
 };
 
 // --- Finalization Feature ---
@@ -229,138 +261,341 @@ export const generateFinalProjectArtifact = async (
   mode: AIMode,
   targetLanguage: Language
 ): Promise<string> => {
-  try {
-    const langName = targetLanguage === 'fa' ? 'Persian (Farsi)' : 'English';
-    const globalContext = getDeepGlobalContext(nodes, edges);
-    
-    let instructions = "";
-    switch(mode) {
-      case 'writing':
-         instructions = "Compile the entire graph into a Final Story / Novel Draft. Ensure narrative flow, character consistency, and plot resolution.";
-         break;
-      case 'law':
-         instructions = "Compile the graph into a Final Legal Defense Strategy or Comprehensive Case File. Structure it with arguments, evidence, and conclusion.";
-         break;
-      case 'journalism':
-         instructions = "Compile a Final Investigative Report for publication. Synthesize all interviews, facts, and timelines into a coherent article.";
-         break;
-      case 'gameDesign':
-         instructions = "Compile a complete Game Design Document (GDD). Organize mechanics, characters, and levels into a final specification.";
-         break;
-      case 'investigation':
-         instructions = "Create a Final Detective's Case Solved Report. Who did it? How? Why? Summarize the evidence trail.";
-         break;
-      default:
-         instructions = "Create a comprehensive Final Project Report based on the graph data. Structure it logically with Introduction, Body, and Conclusion.";
-    }
+  const ai = getClient();
+  const langName = targetLanguage === "fa" ? "Persian (Farsi)" : "English";
+  const globalContext = getDeepGlobalContext(nodes, edges);
 
-    const prompt = `
-      You are an expert AI specialized in ${mode}.
-      Output Language: ${langName}.
-      
-      TASK:
-      ${instructions}
-      
-      SOURCE DATA (GRAPH):
-      ${globalContext}
-      
-      OUTPUT:
-      - Return formatted HTML (Direction: ${targetLanguage === 'fa' ? 'rtl' : 'ltr'}).
-      - Use <h1>, <h2>, <p>, <ul> etc.
-    `;
-
-    const response = await ai.models.generateContent({
-      model: reasoningModel,
-      contents: { parts: [{ text: prompt }] }
-    });
-
-    return response.text || "Error generating final artifact.";
-
-  } catch (e) {
-    return `Error: ${e instanceof Error ? e.message : 'Unknown'}`;
+  let instructions = "";
+  switch (mode) {
+    case "writing":
+      instructions = "Compile the entire graph into a Final Story / Novel Draft. Ensure narrative flow, character consistency, and plot resolution.";
+      break;
+    case "law":
+      instructions = "Compile the graph into a Final Legal Defense Strategy or Comprehensive Case File. Structure it with arguments, evidence, and conclusion.";
+      break;
+    case "journalism":
+      instructions = "Compile a Final Investigative Report for publication. Synthesize all interviews, facts, and timelines into a coherent article.";
+      break;
+    case "gameDesign":
+      instructions = "Compile a complete Game Design Document (GDD). Organize mechanics, characters, and levels into a final specification.";
+      break;
+    case "investigation":
+      instructions = "Create a Final Detective's Case Solved Report. Summarize the suspects, motives, timeline, and evidence trail.";
+      break;
+    default:
+      instructions = `Create a comprehensive Final Project Report tailored to the "${mode}" domain based on the graph data. Structure it logically with Introduction, Body, and Conclusion.`;
   }
+
+  const prompt = `
+    You are an expert AI specialized in ${mode}.
+    Output Language: ${langName}.
+
+    TASK:
+    ${instructions}
+
+    SOURCE DATA (GRAPH):
+    ${globalContext}
+
+    OUTPUT:
+    - Return ONLY formatted HTML fragment (no markdown fences).
+    - Direction: ${targetLanguage === "fa" ? "rtl" : "ltr"}.
+    - Use semantic HTML: <h1>, <h2>, <p>, <ul>, <li>, <table> etc.
+  `;
+
+  const response = await ai.models.generateContent({
+    model: reasoningModel,
+    contents: { parts: [{ text: prompt }] }
+  });
+
+  return stripCodeFences(response.text || "<p>No final artifact generated.</p>");
 };
 
+export const generatePresentation = async (item: GraphNodeData | GraphEdgeData, lang: Language) =>
+  generateModeContent(item, "presentation", lang);
 
-// --- Legacy exports kept for compatibility if needed, but generateModeContent supersedes them ---
-export const generatePresentation = async (item: any, lang: any) => generateModeContent(item, 'presentation', lang);
 export const generateCakePresentation = async (item: GraphNodeData | GraphEdgeData, targetLanguage: Language) => {
-    // Keeping specific implementation for Cake as requested in previous iterations, simplified here to call main logic or custom
-     // Re-implementing strictly for "Cake" structure consistency
-    try {
-        const langName = targetLanguage === 'fa' ? 'Persian' : 'English';
-        const { parts, descriptions } = getFileParts(item.files);
-        const prompt = `Create a 'Cake Business Presentation' (9 slices: Problem, Solution, Market, Competitors, Business Model, Roadmap, Team, Exit, Ecosystem). Lang: ${langName}. Entity: ${item.label}. Content: ${item.fullContent}. Images: ${descriptions}. Output HTML.`;
-        parts.unshift({ text: prompt });
-        const res = await ai.models.generateContent({ model: textModel, contents: { parts }});
-        return res.text || "Error";
-    } catch(e) { return "Error"; }
+  const ai = getClient();
+  const langName = targetLanguage === "fa" ? "Persian (Farsi)" : "English";
+  const direction = targetLanguage === "fa" ? "rtl" : "ltr";
+  const { parts, descriptions } = getFileParts(item.files);
+
+  const prompt = `Create a 'Cake Business Presentation' (9 slices: Problem, Solution, Market, Competitors, Business Model, Roadmap, Team, Exit, Ecosystem).
+Output Language: ${langName}.
+Entity: ${item.label}
+Summary: ${item.summary}
+Content: ${item.fullContent}
+Images: ${descriptions}
+Output ONLY clean HTML with dir="${direction}" (no markdown code fences).`;
+
+  parts.unshift({ text: prompt });
+  const res = await ai.models.generateContent({ model: textModel, contents: { parts } });
+  return stripCodeFences(res.text || "<p>No content generated.</p>");
 };
 
-export const generateSmartGuide = async (item: any, nodes: any, edges: any, lang: any) => {
-    // Re-implementing simplified Smart Guide
-    try {
-        const langName = lang === 'fa' ? 'Persian' : 'English';
-        const prompt = `Explain the role of '${item.label}' in the network topology. Context: Connected to ${edges.length} items. Lang: ${langName}. Output HTML.`;
-        const res = await ai.models.generateContent({ model: textModel, contents: { parts: [{ text: prompt }] }});
-        return res.text || "Error";
-    } catch(e) { return "Error"; }
+export const generateSmartGuide = async (
+  item: GraphNodeData | GraphEdgeData,
+  nodes: GraphNodeData[],
+  edges: GraphEdgeData[],
+  lang: Language
+) => {
+  const ai = getClient();
+  const langName = lang === "fa" ? "Persian (Farsi)" : "English";
+  const direction = lang === "fa" ? "rtl" : "ltr";
+  const relatedEdges = edges.filter((e) => e.fromId === item.id || e.toId === item.id);
+  const connectionsDesc = relatedEdges
+    .map((e) => {
+      const from = nodes.find((n) => n.id === e.fromId)?.label || "?";
+      const to = nodes.find((n) => n.id === e.toId)?.label || "?";
+      return `- ${from} --[${e.label}]--> ${to}`;
+    })
+    .join("\n");
+
+  const prompt = `Explain the role and strategic importance of '${item.label}' in the knowledge graph.
+Summary: ${item.summary}
+Total nodes in graph: ${nodes.length}, Total edges: ${edges.length}.
+Direct connections:
+${connectionsDesc || "(None)"}
+Output Language: ${langName}.
+Output ONLY clean HTML with dir="${direction}" (no markdown code fences).`;
+
+  const res = await ai.models.generateContent({ model: textModel, contents: { parts: [{ text: prompt }] } });
+  return stripCodeFences(res.text || "<p>No guide generated.</p>");
 };
 
-export const chatWithAI = async (message: string, history: ChatMessage[], currentItem: any, allNodes: any[], allEdges: any[], targetLanguage: Language) => {
-    // Same as before
-    try {
-        const langName = targetLanguage === 'fa' ? 'Persian' : 'English';
-        const context = getDeepGlobalContext(allNodes, allEdges);
-        const prompt = `Assistant for ${langName}. Context: ${context}. User: ${message}`;
-        const res = await ai.models.generateContent({ model: textModel, contents: { parts: [{ text: prompt }] }});
-        return res.text || "Error";
-    } catch(e) { return "Error"; }
+export const chatWithAI = async (
+  message: string,
+  history: ChatMessage[],
+  currentItem: GraphNodeData | GraphEdgeData | undefined,
+  allNodes: GraphNodeData[],
+  allEdges: GraphEdgeData[],
+  targetLanguage: Language
+): Promise<string> => {
+  const ai = getClient();
+  const langName = targetLanguage === "fa" ? "Persian (Farsi)" : "English";
+  const context = getDeepGlobalContext(allNodes, allEdges);
+
+  const historyText = (history || [])
+    .slice(-10)
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+    .join("\n");
+
+  const focusBlock = currentItem
+    ? `CURRENTLY FOCUSED ITEM:\nLabel: ${currentItem.label}\nSummary: ${currentItem.summary}\nFull Content: ${currentItem.fullContent}\n\n`
+    : "";
+
+  const prompt = `You are a helpful Knowledge Graph Assistant responding in ${langName}.
+${focusBlock}${context}
+
+CONVERSATION HISTORY:
+${historyText || "(Start of conversation)"}
+
+CURRENT USER QUESTION:
+${message}`;
+
+  const res = await ai.models.generateContent({ model: textModel, contents: { parts: [{ text: prompt }] } });
+  return res.text || "";
 };
 
-export const generateGraphFromFiles = async (files: AttachedFile[], defs: AIArchitectDefinitions, lang: Language): Promise<{ nodes: any[], edges: any[] }> => {
-    // Keep existing architect logic
-     try {
-        let fileContext = "";
-        files.forEach(f => {
-           if (f.type.startsWith('text/') || f.name.match(/\.(js|ts|txt|md)$/)) {
-             fileContext += `\nFILE: ${f.name}\n${decodeFileContent(f.content).substring(0, 10000)}\n`;
-           }
-        });
-        const prompt = `Architect Task. Defs: ${defs.nodeDefinition}, ${defs.edgeDefinition}. files: ${fileContext}. Return JSON {nodes:[{label, summary, fullContent, color, size}], edges:[{fromLabel, toLabel, label}]}.`;
-        const response = await ai.models.generateContent({
-            model: reasoningModel,
-            contents: { parts: [{ text: prompt }] },
-            config: { responseMimeType: "application/json" }
-        });
-        return JSON.parse(response.text || "{}");
-    } catch (e) { return { nodes: [], edges: [] }; }
+export const generateGraphFromFiles = async (
+  files: AttachedFile[],
+  defs: AIArchitectDefinitions,
+  lang: Language
+): Promise<{ nodes: any[]; edges: any[] }> => {
+  const ai = getClient();
+  const langName = lang === "fa" ? "Persian (Farsi)" : "English";
+
+  let fileContext = "";
+  files.forEach((f) => {
+    if (f.type?.startsWith("text/") || f.name.match(/\.(js|ts|tsx|jsx|txt|md|json|py|css|html|csv)$/i)) {
+      fileContext += `\nFILE: ${f.name}\n${decodeFileContent(f.content).substring(0, 12000)}\n`;
+    }
+  });
+
+  if (!fileContext.trim()) {
+    throw new Error(lang === "fa" ? "هیچ فایل متنی معتبری برای تحلیل یافت نشد." : "No readable text files found to analyze.");
+  }
+
+  const prompt = `Analyze the following files and design a clear knowledge/architecture graph.
+Output Language for all labels, summaries, and content: ${langName}.
+${formatDefsContext(defs)}
+FILES:
+${fileContext}`;
+
+  const response = await ai.models.generateContent({
+    model: reasoningModel,
+    contents: { parts: [{ text: prompt }] },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          nodes: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                label: { type: Type.STRING },
+                summary: { type: Type.STRING },
+                fullContent: { type: Type.STRING },
+                color: { type: Type.STRING },
+                size: { type: Type.NUMBER }
+              },
+              required: ["label", "summary", "fullContent"]
+            }
+          },
+          edges: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                fromLabel: { type: Type.STRING },
+                toLabel: { type: Type.STRING },
+                label: { type: Type.STRING },
+                summary: { type: Type.STRING }
+              },
+              required: ["fromLabel", "toLabel", "label"]
+            }
+          }
+        },
+        required: ["nodes", "edges"]
+      }
+    }
+  });
+
+  return JSON.parse(response.text || '{"nodes":[],"edges":[]}');
 };
 
-export const getBrainstormSuggestions = async (nodes: any[], edges: any[], defs: any, feedback: string): Promise<AISuggestion[]> => {
-    // Keep existing logic
-    try {
-        const context = getDeepGlobalContext(nodes, edges);
-        const prompt = `Brainstorm. Context: ${context}. Feedback: ${feedback}. Return JSON array of suggestions.`;
-        const response = await ai.models.generateContent({
-             model: reasoningModel,
-             contents: { parts: [{ text: prompt }] },
-             config: { responseMimeType: "application/json" }
-        });
-        return JSON.parse(response.text || "[]");
-    } catch (e) { return []; }
+export const getBrainstormSuggestions = async (
+  nodes: GraphNodeData[],
+  edges: GraphEdgeData[],
+  defs: AIArchitectDefinitions,
+  feedback: string,
+  lang: Language = "fa"
+): Promise<AISuggestion[]> => {
+  const ai = getClient();
+  const langName = lang === "fa" ? "Persian (Farsi)" : "English";
+  const context = getDeepGlobalContext(nodes, edges);
+
+  const prompt = `Brainstorm 3 to 5 high-value actionable suggestions to improve or expand this graph.
+Output Language for title and description: ${langName}.
+${formatDefsContext(defs)}${context}
+USER FEEDBACK / FOCUS: ${feedback || "(General improvement)"}
+
+For each suggestion:
+- type "add_node": provide data.label, data.summary, data.fullContent, data.color
+- type "add_edge": provide data.fromLabel (existing node label), data.toLabel (existing node label), data.label, data.summary
+- type "modify_content": provide data.nodeLabel (existing node label), data.newFullContent`;
+
+  const response = await ai.models.generateContent({
+    model: reasoningModel,
+    contents: { parts: [{ text: prompt }] },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            id: { type: Type.STRING },
+            title: { type: Type.STRING },
+            description: { type: Type.STRING },
+            type: { type: Type.STRING },
+            data: {
+              type: Type.OBJECT,
+              properties: {
+                label: { type: Type.STRING },
+                summary: { type: Type.STRING },
+                fullContent: { type: Type.STRING },
+                color: { type: Type.STRING },
+                fromLabel: { type: Type.STRING },
+                toLabel: { type: Type.STRING },
+                nodeLabel: { type: Type.STRING },
+                newFullContent: { type: Type.STRING }
+              }
+            }
+          },
+          required: ["id", "title", "description", "type", "data"]
+        }
+      }
+    }
+  });
+
+  return JSON.parse(response.text || "[]");
 };
 
-export const autoCompleteProject = async (nodes: any[], edges: any[], defs: any): Promise<any> => {
-     // Keep existing logic
-     try {
-        const context = getDeepGlobalContext(nodes, edges);
-        const prompt = `Auto-complete project. Context: ${context}. Return JSON {modifiedNodes:[], newNodes:[], newEdges:[]}`;
-        const response = await ai.models.generateContent({
-             model: reasoningModel,
-             contents: { parts: [{ text: prompt }] },
-             config: { responseMimeType: "application/json" }
-        });
-        return JSON.parse(response.text || "{}");
-     } catch (e) { return { modifiedNodes: [], newNodes: [], newEdges: [] }; }
-}
+export const autoCompleteProject = async (
+  nodes: GraphNodeData[],
+  edges: GraphEdgeData[],
+  defs: AIArchitectDefinitions,
+  lang: Language = "fa"
+): Promise<{
+  modifiedNodes: { id: string; content: string }[];
+  newNodes: { label: string; summary: string; fullContent: string; color?: string }[];
+  newEdges: { fromLabel: string; toLabel: string; label: string; summary?: string }[];
+}> => {
+  const ai = getClient();
+  const langName = lang === "fa" ? "Persian (Farsi)" : "English";
+  const context = getDeepGlobalContext(nodes, edges);
+
+  const prompt = `Auto-complete and enrich this knowledge graph project.
+Output Language: ${langName}.
+${formatDefsContext(defs)}${context}
+
+Return:
+- modifiedNodes: enrich existing nodes using their exact ID from [ID=...] above.
+- newNodes: new nodes needed to complete the project.
+- newEdges: new connections linking existing or new node labels (use exact node labels for fromLabel and toLabel).`;
+
+  const response = await ai.models.generateContent({
+    model: reasoningModel,
+    contents: { parts: [{ text: prompt }] },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          modifiedNodes: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                content: { type: Type.STRING }
+              },
+              required: ["id", "content"]
+            }
+          },
+          newNodes: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                label: { type: Type.STRING },
+                summary: { type: Type.STRING },
+                fullContent: { type: Type.STRING },
+                color: { type: Type.STRING }
+              },
+              required: ["label", "summary", "fullContent"]
+            }
+          },
+          newEdges: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                fromLabel: { type: Type.STRING },
+                toLabel: { type: Type.STRING },
+                label: { type: Type.STRING },
+                summary: { type: Type.STRING }
+              },
+              required: ["fromLabel", "toLabel", "label"]
+            }
+          }
+        },
+        required: ["modifiedNodes", "newNodes", "newEdges"]
+      }
+    }
+  });
+
+  return JSON.parse(response.text || '{"modifiedNodes":[],"newNodes":[],"newEdges":[]}');
+};

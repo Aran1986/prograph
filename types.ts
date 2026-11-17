@@ -62,7 +62,7 @@ export interface CameraState {
   z: number;
 }
 
-export type InteractionMode = 'select' | 'edge-start' | 'edge-finish';
+export type InteractionMode = 'select' | 'edge-start' | 'edge-finish' | 'box-select';
 
 export interface AppState {
   nodes: GraphNodeData[];
@@ -103,4 +103,13 @@ export interface AISuggestion {
   type: 'add_node' | 'add_edge' | 'modify_content' | 'delete_item';
   data: any; // The payload to apply
   status: 'pending' | 'accepted' | 'rejected';
+}
+
+export interface ProjectWorkspace {
+  id: string;
+  name: string;
+  updatedAt: number;
+  nodes: GraphNodeData[];
+  edges: GraphEdgeData[];
+  architectDefs: AIArchitectDefinitions;
 }

@@ -17,7 +17,7 @@
     "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
-    "@google/genai": "^2.7.0",
+    "@google/genai": "^3.4.0",
     "@react-three/drei": "^9.0.0",
     "@react-three/fiber": "^8.0.0",
     "express": "^5.2.1",
